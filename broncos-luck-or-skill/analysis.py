@@ -719,8 +719,14 @@ ORANGE, BLUE, NAVY = "#FB4F14", "#2f5ea8", "#002244"   # Broncos orange; Broncos
 YELLOW, AQUA = "#eda100", "#1baf7a"                     # checked for colour-blind separation with the two above
 GRAY, GRID, INK, MUTED, SURFACE = "#b4b3ad", "#e6e5e0", "#1d1d1b", "#5f5e5a", "#ffffff"
 BUCKET_COLORS = dict(zip(BUCKETS, [YELLOW, AQUA, ORANGE, BLUE, GRAY]))
-WIDTH = 7.0          # inches: narrow, so text stays legible when a phone shrinks the image
-DPI = 200
+
+# Every chart is drawn twice: a desktop version (1400px wide) and a phone version (~800px wide,
+# single column where needed, no text smaller than 10.5pt). The web page picks one with <picture>.
+LAYOUTS = {
+    "desktop": dict(phone=False, width=7.0, dpi=200, title_fs=15.5, title_wrap=46, sub_wrap=80, suffix=""),
+    "phone": dict(phone=True, width=3.8, dpi=210, title_fs=14.0, title_wrap=27, sub_wrap=46, suffix="_phone"),
+}
+L = dict(LAYOUTS["desktop"])
 
 plt.rcParams.update({
     "font.family": "DejaVu Sans", "font.size": 12.5, "text.color": INK,
@@ -733,36 +739,54 @@ plt.rcParams.update({
 })
 
 
+def fs(size: float) -> float:
+    """Font size, with a floor on phone versions so nothing shrinks below ~13px on screen."""
+    return max(size, 10.5) if L["phone"] else size
+
+
+def game_label(g: str, r) -> str:
+    if L["phone"]:  # "Wk 13 @ WAS" -> "Wk13 WAS"
+        g = g.replace("Wk ", "Wk").replace(" vs ", " ").replace(" @ ", " ")
+    return f"{g}  {r.result} {r.den_pts}-{r.opp_pts}"
+
+
 def frame(plot_h: float, title: str, subtitle: str, nrows=1, ncols=1, **kw):
     """Figure with a left-aligned takeaway title, a subtitle and a data credit."""
-    t = textwrap.fill(title, 46)
-    s = textwrap.fill(subtitle, 80)
+    t = textwrap.fill(title, L["title_wrap"])
+    s = textwrap.fill(subtitle, L["sub_wrap"])
     tl, sl = t.count("\n") + 1, s.count("\n") + 1
-    head = 0.30 * tl + 0.22 * sl + 0.45
+    th = L["title_fs"] / 72 * 1.2
+    head = th * tl + 0.22 * sl + 0.45
     foot = 0.75
     h = head + plot_h + foot
-    fig, axes = plt.subplots(nrows, ncols, figsize=(WIDTH, h), squeeze=False, **kw)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(L["width"], h), squeeze=False, **kw)
     fig.subplots_adjust(top=1 - head / h, bottom=foot / h, left=0.08, right=0.96)
-    fig.text(0.03, 1 - 0.15 / h, t, fontsize=15.5, fontweight="bold", color=NAVY, va="top", linespacing=1.15)
-    fig.text(0.03, 1 - (0.25 + 0.30 * tl) / h, s, fontsize=10.5, color=MUTED, va="top", linespacing=1.3)
-    fig.text(0.03, 0.12 / h, "Data: nflverse (nflreadpy)", fontsize=9, color=MUTED)
+    fig.text(0.03, 1 - 0.15 / h, t, fontsize=L["title_fs"], fontweight="bold", color=NAVY, va="top",
+             linespacing=1.15)
+    fig.text(0.03, 1 - (0.25 + th * tl) / h, s, fontsize=10.5, color=MUTED, va="top", linespacing=1.3)
+    fig.text(0.03, 0.12 / h, "Data: nflverse (nflreadpy)", fontsize=fs(9), color=MUTED)
     return fig, axes
 
 
 def save(fig, name: str):
     FIG.mkdir(exist_ok=True)
-    fig.savefig(FIG / f"{name}.png", dpi=DPI, facecolor=SURFACE)
+    fig.savefig(FIG / f"{name}{L['suffix']}.png", dpi=L["dpi"], facecolor=SURFACE)
     plt.close(fig)
 
 
 def chart_expected(den: pd.Series):
     n = int(den.os_games)
-    rows = [
-        ("Season wins expected from points scored & allowed", den.pyth_wins, den.wins),
-        ("Season wins expected from efficiency (EPA per play)", den.epa_wins, den.wins),
-        (f"Close wins expected for a team this efficient ({n} games)", den.exp_os_pct * n, den.os_wins),
-        (f"Close wins expected from coin flips ({n} games)", 0.5 * n, den.os_wins),
-    ]
+    if L["phone"]:
+        labels = ["Wins: from points", "Wins: from efficiency", f"Close wins: efficiency ({n} games)",
+                  f"Close wins: coin flips ({n} games)"]
+    else:
+        labels = ["Season wins expected from points scored & allowed",
+                  "Season wins expected from efficiency (EPA per play)",
+                  f"Close wins expected for a team this efficient ({n} games)",
+                  f"Close wins expected from coin flips ({n} games)"]
+    vals = [(den.pyth_wins, den.wins), (den.epa_wins, den.wins), (den.exp_os_pct * n, den.os_wins),
+            (0.5 * n, den.os_wins)]
+    rows = [(lab, e, a) for lab, (e, a) in zip(labels, vals)]
     gap = den.wins - (den.pyth_wins + den.epa_wins) / 2
     fig, ax = frame(4.0, f"Denver won about {gap:.0f} more games than their points and efficiency predicted",
                     "Gray = expected wins, orange = actual wins. 2025 regular season (17 games).")
@@ -773,17 +797,17 @@ def chart_expected(den: pd.Series):
                    label="Expected" if i == 0 else None)
         ax.scatter(act, i, s=110, color=ORANGE, edgecolor=SURFACE, linewidth=2, zorder=3,
                    label="Actual" if i == 0 else None)
-        ax.text(exp - 0.35, i, f"{exp:.1f}", ha="right", va="center", fontsize=11, color=MUTED)
-        ax.text(act + 0.35, i, f"{act:.0f} (+{act - exp:.1f})", ha="left", va="center", fontsize=11,
-                color=INK, fontweight="bold")
+        ax.text(exp - 0.45, i, f"{exp:.1f}", ha="right", va="center", fontsize=11, color=MUTED)
+        ax.text(act + 0.45, i, f"{act:.0f}" + ("" if L["phone"] else f" (+{act - exp:.1f})"), ha="left",
+                va="center", fontsize=11, color=INK, fontweight="bold")
         ax.text(0, i + 0.36, label, fontsize=10.5, color=INK, va="center")
     ax.set_yticks([])
     ax.set_xlim(0, 17.9)
-    ax.set_xticks([0, 5, 10, 15, 17])
+    ax.set_xticks([0, 5, 10, 15] if L["phone"] else [0, 5, 10, 15, 17])
     ax.set_ylim(-0.5, len(rows) - 0.35)
     ax.set_xlabel("Wins")
     ax.grid(axis="y", visible=False)
-    ax.legend(loc="lower right", bbox_to_anchor=(1.02, 0.98), ncol=2, fontsize=10, handletextpad=0.1,
+    ax.legend(loc="lower right", bbox_to_anchor=(1.02, 0.98), ncol=2, fontsize=fs(10), handletextpad=0.1,
               columnspacing=0.8)
     fig.subplots_adjust(left=0.04)
     save(fig, "1_expected_vs_actual")
@@ -792,13 +816,14 @@ def chart_expected(den: pd.Series):
 def chart_timelines(games: pd.DataFrame, tl: pd.DataFrame):
     wins = games[games.result == "W"].reset_index(drop=True)
     below = int((wins.min_wp < 0.25).sum())
-    ncols, nrows = 2, int(np.ceil(len(wins) / 2))
-    fig, axes = frame(1.5 * nrows, f"Denver's chance of winning fell below 25% in {below} of their "
-                                   f"{len(wins)} close wins",
+    ncols = 1 if L["phone"] else 2
+    nrows = int(np.ceil(len(wins) / ncols))
+    fig, axes = frame((1.35 if L["phone"] else 1.5) * nrows,
+                      f"Denver's chance of winning fell below 25% in {below} of their {len(wins)} close wins",
                       "Denver's win probability (nflverse model) through each one-score win. "
                       "Orange dot = the lowest point. Gray line = 50%.",
                       nrows, ncols, sharex=True, sharey=True)
-    fig.subplots_adjust(hspace=0.6, wspace=0.1, left=0.07)
+    fig.subplots_adjust(hspace=0.6, wspace=0.1, left=0.12 if L["phone"] else 0.07)
     xmax = 70 if (tl.t > 3600).any() else 60
     for k, ax in enumerate(axes.flat):
         ax.grid(False)
@@ -814,23 +839,26 @@ def chart_timelines(games: pd.DataFrame, tl: pd.DataFrame):
         i = int(np.argmin(y))
         ax.scatter(x[i], y[i], s=46, color=ORANGE, edgecolor=SURFACE, linewidth=1.5, zorder=3)
         low = y[i] < 35
-        ax.text(x[i], y[i] + (9 if low else -9), f"low {y[i]:.0f}%", fontsize=9.5, ha="center",
-                va="bottom" if low else "top", color=INK,
+        ax.text(min(max(x[i], 8), xmax - 8), y[i] + (9 if low else -9), f"low {y[i]:.0f}%", fontsize=fs(9.5),
+                ha="center", va="bottom" if low else "top", color=INK,
                 bbox=dict(boxstyle="round,pad=0.15", fc=SURFACE, ec="none", alpha=0.9))
         ax.set_title(f"{g.game}, {g.den_pts}-{g.opp_pts}" + (" (OT)" if g.overtime else ""),
                      loc="left", fontsize=10.5, pad=4)
         ax.set_ylim(0, 104)
         ax.set_xlim(0, xmax)
-        ax.set_yticks([0, 50, 100], ["0", "50", "100%"], fontsize=9)
-        ax.set_xticks([0, 15, 30, 45, 60], ["Q1", "Q2", "Q3", "Q4", "OT"], fontsize=9)
+        ax.set_yticks([0, 50, 100], ["0", "50", "100%"], fontsize=fs(9))
+        ax.set_xticks([0, 15, 30, 45, 60], ["Q1", "Q2", "Q3", "Q4", "OT"], fontsize=fs(9))
+        ax.tick_params(labelbottom=True)
     save(fig, "2_win_probability_close_wins")
 
 
 def chart_history(pairs: pd.DataFrame, big: pd.DataFrame, hs: dict, den_now: pd.Series, live: pd.Series):
     both = pairs.dropna(subset=["os_win_pct", "os_win_pct_next"])
     jit = np.random.default_rng(1).uniform(-1.2, 1.2, (2, len(both)))
-    fig, ax = frame(5.6, f"Close-game success barely carries over: teams with 9+ close wins won "
-                         f"{100 * hs['big_os_pct_next']:.0f}% of close games the next year",
+    nxt = 100 * hs["big_os_pct_next"]
+    fig, ax = frame(5.0 if L["phone"] else 5.6,
+                    f"Close-game success barely carries over: teams with 9+ close wins won {nxt:.0f}% of close "
+                    "games the next year",
                     f"Every team-season {HIST_FIRST}–{SEASON - 1}: one-score win % that season vs the next "
                     f"(n = {hs['n_pairs_os']} pairs, correlation r = {hs['r_os']:.2f}). Points are jittered slightly.")
     ax = ax[0, 0]
@@ -840,26 +868,35 @@ def chart_history(pairs: pd.DataFrame, big: pd.DataFrame, hs: dict, den_now: pd.
                linewidth=2, zorder=3, label=f"9+ close wins ({hs['n_big']} teams)")
     for r in big[big.os_wins >= 11].itertuples():
         ax.annotate(f"{r.team} {r.season}", (100 * r.os_win_pct, 100 * r.os_win_pct_next),
-                    xytext=(-8, 0), textcoords="offset points", ha="right", va="center", fontsize=10)
+                    xytext=(-8, -6 if L["phone"] else 0), textcoords="offset points", ha="right",
+                    va="top" if L["phone"] else "center", fontsize=fs(10))
     x, y = 100 * den_now.os_win_pct, 100 * live.os_win_pct
     ax.scatter(x, y, s=130, color=ORANGE, edgecolor=SURFACE, linewidth=2, zorder=4,
                label=f"Denver 2025 → {LIVE} so far")
     ax.annotate(f"DEN 2025 → {LIVE}: {int(live.os_wins)}-{int(live.os_games - live.os_wins)}\n"
                 f"so far (only {int(live.os_games)} games)", (x, y), xytext=(-12, -2),
-                textcoords="offset points", ha="right", va="top", fontsize=10, fontweight="bold")
+                textcoords="offset points", ha="right", va="top", fontsize=fs(10), fontweight="bold")
     ax.axhline(50, color=MUTED, lw=1)
-    ax.plot([70, 101], [100 * hs["big_os_pct_next"]] * 2, color=BLUE, lw=2)
-    ax.text(69, 100 * hs["big_os_pct_next"], f"9+ teams, next year: {100 * hs['big_os_pct_next']:.0f}%",
-            ha="right", va="center", fontsize=10, color=INK,
-            bbox=dict(boxstyle="round,pad=0.2", fc=SURFACE, ec="none", alpha=0.9))
+    ax.plot([70, 101], [nxt] * 2, color=BLUE, lw=2, label=f"9+ teams, next year: {nxt:.0f}%" if L["phone"] else None)
+    if not L["phone"]:
+        ax.text(69, nxt, f"9+ teams, next year: {nxt:.0f}%", ha="right", va="center", fontsize=10, color=INK,
+                bbox=dict(boxstyle="round,pad=0.2", fc=SURFACE, ec="none", alpha=0.9))
     ax.set_xlim(-4, 104)
     ax.set_ylim(-4, 108)
-    ax.set_xticks([0, 25, 50, 75, 100], ["0%", "25%", "50%", "75%", "100%"])
-    ax.set_yticks([0, 25, 50, 75, 100], ["0%", "25%", "50%", "75%", "100%"])
+    ticks, tl_ = [0, 25, 50, 75, 100], ["0%", "25%", "50%", "75%", "100%"]
+    if L["phone"]:
+        ticks, tl_ = [0, 50, 100], ["0%", "50%", "100%"]
+    ax.set_xticks(ticks, tl_)
+    ax.set_yticks(ticks, tl_)
     ax.set_xlabel("One-score win % this season")
-    ax.set_ylabel("One-score win % next season")
-    ax.legend(loc="upper left", fontsize=10, markerscale=0.9, handletextpad=0.2)
-    fig.subplots_adjust(left=0.13)
+    ax.set_ylabel("Next season")
+    if L["phone"]:
+        fig.legend(*ax.get_legend_handles_labels(), loc="lower left", bbox_to_anchor=(0.02, 0.045), ncol=1,
+                   fontsize=fs(10), handletextpad=0.4, handlelength=1.2)
+        fig.subplots_adjust(left=0.2, bottom=fig.subplotpars.bottom + 0.16)
+    else:
+        ax.legend(loc="upper left", fontsize=10, markerscale=0.9, handletextpad=0.2)
+        fig.subplots_adjust(left=0.13)
     save(fig, "3_history_close_wins_next_season")
 
 
@@ -882,14 +919,15 @@ def chart_decided(games: pd.DataFrame, bk: pd.DataFrame, q4: float, lost: float)
             left += v
     ax.scatter(b.sum(axis=1), y, s=34, color=INK, zorder=4, edgecolor=SURFACE, linewidth=1.2, label="Net EPA")
     res = games.set_index("game").loc[order]
-    ax.set_yticks(y, [f"{g}  {r.result} {r.den_pts}-{r.opp_pts}" for g, r in res.iterrows()], fontsize=10.5)
+    ax.set_yticks(y, [game_label(g, r) for g, r in res.iterrows()], fontsize=10.5)
     ax.axvline(0, color=MUTED, lw=1)
-    ax.set_xlabel("EPA for Denver (roughly, points)")
+    ax.set_xlabel("EPA for Denver (≈ points)")
     ax.grid(axis="y", visible=False)
-    fig.subplots_adjust(left=0.34, top=fig.subplotpars.top - 0.065)
+    legend_h = 0.11 if L["phone"] else 0.065
+    fig.subplots_adjust(left=0.42 if L["phone"] else 0.34, top=fig.subplotpars.top - legend_h)
     fig.legend(*ax.get_legend_handles_labels(), loc="upper left",
-               bbox_to_anchor=(0.02, fig.subplotpars.top + 0.065), ncol=3, fontsize=9.5,
-               handlelength=1, columnspacing=0.8, handletextpad=0.4)
+               bbox_to_anchor=(0.02, fig.subplotpars.top + legend_h), ncol=2 if L["phone"] else 3,
+               fontsize=fs(9.5), handlelength=1, columnspacing=0.8, handletextpad=0.4)
     save(fig, "4_what_decided_each_close_game")
 
 
@@ -908,23 +946,29 @@ def chart_luck(g: pd.DataFrame):
     ax.barh(y, v, height=0.55, color=np.where(v >= 0, ORANGE, BLUE), edgecolor=SURFACE, linewidth=1.5)
     for yi, val in zip(y, v):
         ax.text(val + (2 if val >= 0 else -2), yi, f"{val:+.0f}", va="center",
-                ha="left" if val >= 0 else "right", fontsize=10, color=INK)
+                ha="left" if val >= 0 else "right", fontsize=fs(10), color=INK)
     ax.axvline(0, color=MUTED, lw=1)
     for x in (50, -50):
         ax.axvline(x, color=GRAY, lw=1.2)
-    ax.text(52, -0.4, "Enough luck to\nhave decided\na win", fontsize=9.5, color=MUTED, va="bottom")
-    ax.text(-52, -0.4, "…or a\nloss", fontsize=9.5, color=MUTED, va="bottom", ha="right")
-    ax.set_yticks(y, [f"{gm}  {r.result} {r.den_pts}-{r.opp_pts}" for gm, r in d.iterrows()], fontsize=10.5)
-    ax.set_xlim(-80, 85)
-    ax.set_xlabel("Win-probability points: actual minus expected")
+    ax.text(52, -0.4, "Decides\na win" if L["phone"] else "Enough luck to\nhave decided\na win",
+            fontsize=fs(9.5), color=MUTED, va="bottom")
+    if L["phone"]:
+        ax.text(-78, -0.4, "…or a\nloss", fontsize=fs(9.5), color=MUTED, va="bottom", ha="left")
+    else:
+        ax.text(-52, -0.4, "…or a\nloss", fontsize=fs(9.5), color=MUTED, va="bottom", ha="right")
+    ax.set_yticks(y, [game_label(gm, r) for gm, r in d.iterrows()], fontsize=10.5)
+    ax.set_xlim(-80, 108 if L["phone"] else 85)
+    if L["phone"]:
+        ax.set_xticks([-50, 0, 50])
+    ax.set_xlabel("WP points vs expected" if L["phone"] else "Win-probability points: actual minus expected")
     ax.grid(axis="y", visible=False)
-    fig.subplots_adjust(left=0.34)
+    fig.subplots_adjust(left=0.42 if L["phone"] else 0.34)
     save(fig, "5_luck_per_close_game")
 
 
 def chart_repeat(sig: pd.DataFrame):
     s = sig.sort_values("year_to_year_r")
-    fig, ax = frame(4.8, "Only overall efficiency carries over well from one season to the next",
+    fig, ax = frame(5.6 if L["phone"] else 4.8, "Only overall efficiency carries over well from one season to the next",
                     f"How well each team stat in one season predicts the same stat the next season "
                     f"(correlation r, {FIT.start}–{FIT.stop - 1}, n = {int(s.n_pairs.iloc[0])} pairs). "
                     "Right: Denver's 2025 rank out of 32.")
@@ -932,40 +976,76 @@ def chart_repeat(sig: pd.DataFrame):
     y = np.arange(len(s))
     ax.barh(y, s.year_to_year_r, height=0.55, color=[ORANGE if m == "net_epa" else BLUE for m in s.metric])
     for yi, r in zip(y, s.itertuples()):
-        ax.text(r.year_to_year_r + 0.01, yi, f"{r.year_to_year_r:.2f}", va="center", fontsize=10)
+        ax.text(r.year_to_year_r + 0.01, yi, f"{r.year_to_year_r:.2f}", va="center", fontsize=fs(10))
         ax.text(0.66, yi, f"#{r.den_rank_2025}", va="center", ha="right", fontsize=10.5, fontweight="bold")
-    ax.text(0.66, len(s) - 0.4, "DEN rank", ha="right", fontsize=9.5, color=MUTED)
-    ax.set_yticks(y, [textwrap.fill(lbl.split(" (")[0], 28) for lbl in s.label], fontsize=10)
+    ax.text(0.66, len(s) - 0.4, "DEN rank", ha="right", fontsize=fs(9.5), color=MUTED)
+    ax.set_yticks(y, [textwrap.fill(lbl.split(" (")[0], 16 if L["phone"] else 28) for lbl in s.label],
+                  fontsize=10.5 if L["phone"] else 10)
     ax.set_xlim(0, 0.67)
     ax.set_xticks([0, 0.2, 0.4])
-    ax.set_xlabel("Year-to-year correlation r")
+    ax.set_xlabel("Year-to-year r" if L["phone"] else "Year-to-year correlation r")
     ax.grid(axis="y", visible=False)
-    fig.subplots_adjust(left=0.38)
+    fig.subplots_adjust(left=0.46 if L["phone"] else 0.38)
     save(fig, "6_what_repeats")
 
 
+VERDICT_COLS = [("Points to SKILL", BLUE), ("Points to LUCK", ORANGE)]
+LUCK_NOTE = "“Luck” here means results that don’t repeat from one season to the next."
+
+
 def chart_verdict(verdict: str, skill: list[str], luck: list[str]):
-    wrap = 33
-    lines = max(sum(textwrap.fill(i, wrap).count("\n") + 1 for i in col) + 1.05 * len(col) for col in (skill, luck))
-    vt = textwrap.fill(verdict, 48)
-    head = 0.6 + 0.32 * (vt.count("\n") + 1) + 0.7
-    h = head + 0.19 * lines + 0.7
-    fig = plt.figure(figsize=(WIDTH, h))
+    phone = L["phone"]
+    wrap = 40 if phone else 33
+    vt = textwrap.fill(verdict, 27 if phone else 48)
+    vfs = 14.5 if phone else 16
+    note = textwrap.fill(LUCK_NOTE, 46 if phone else 80)
+    line = 0.19
+
+    def col_h(items):
+        return sum((line * (textwrap.fill(i, wrap).count("\n") + 1) + 0.2) for i in items) + 0.45
+
+    head = 0.55 + vfs / 72 * 1.2 * (vt.count("\n") + 1) + 0.25 * (note.count("\n") + 1) + 0.55
+    body = col_h(skill) + col_h(luck) if phone else max(col_h(skill), col_h(luck))
+    h = head + body + 0.5
+    fig = plt.figure(figsize=(L["width"], h))
     fig.text(0.04, 1 - 0.25 / h, "VERDICT", fontsize=11, color=MUTED, va="top", fontweight="bold")
-    fig.text(0.04, 1 - 0.55 / h, vt, fontsize=16, fontweight="bold", color=NAVY, va="top", linespacing=1.2)
-    for title, color, items, x in [("Points to SKILL", BLUE, skill, 0.04), ("Points to LUCK", ORANGE, luck, 0.52)]:
-        top = 1 - head / h
-        fig.patches.append(Rectangle((x, top + 0.02 / h), 0.44, 0.05 / h, color=color, transform=fig.transFigure))
+    fig.text(0.04, 1 - 0.55 / h, vt, fontsize=vfs, fontweight="bold", color=NAVY, va="top", linespacing=1.2)
+    fig.text(0.04, 1 - (head - 0.55) / h, note, fontsize=fs(10), color=MUTED, va="bottom", style="italic")
+    top = 1 - head / h
+    for k, ((title, color), items) in enumerate(zip(VERDICT_COLS, (skill, luck))):
+        x, w = (0.04, 0.92) if phone else (0.04 + 0.48 * k, 0.44)
+        if phone and k == 1:
+            top -= col_h(skill) / h
+        fig.patches.append(Rectangle((x, top + 0.02 / h), w, 0.05 / h, color=color, transform=fig.transFigure))
         fig.text(x, top + 0.12 / h, title, fontsize=13, fontweight="bold", color=INK)
         yy = top - 0.12 / h
         for it in items:
             txt = textwrap.fill(it, wrap)
             fig.text(x, yy, "●", fontsize=8, color=color, va="top")
-            fig.text(x + 0.03, yy + 0.02 / h, txt, fontsize=10.5, color=INK, va="top", linespacing=1.3)
-            yy -= (0.19 * (txt.count("\n") + 1) + 0.2) / h
-    fig.text(0.04, 0.2 / h, "Data: nflverse (nflreadpy). Every number is computed in analysis.py.",
-             fontsize=9, color=MUTED)
+            fig.text(x + (0.05 if phone else 0.03), yy + 0.02 / h, txt, fontsize=10.5, color=INK, va="top",
+                     linespacing=1.3)
+            yy -= (line * (txt.count("\n") + 1) + 0.2) / h
+    fig.text(0.04, 0.2 / h, "Data: nflverse (nflreadpy)." + ("" if phone else " Every number is computed in analysis.py."),
+             fontsize=fs(9), color=MUTED)
     save(fig, "7_verdict")
+
+
+def chart_card(verdict: str, tiles: list[tuple[str, str]]):
+    """1200x630 link-preview image (Open Graph / Twitter) built from the verdict."""
+    fig = plt.figure(figsize=(6.0, 3.15))
+    fig.patches.append(Rectangle((0, 0.965), 1, 0.035, color=ORANGE, transform=fig.transFigure))
+    fig.text(0.05, 0.89, "BRONCOS 2025: LUCK OR SKILL?", fontsize=10, color=ORANGE, fontweight="bold", va="top")
+    fig.text(0.05, 0.80, textwrap.fill(verdict, 52), fontsize=12.5, color=NAVY, fontweight="bold", va="top",
+             linespacing=1.2)
+    for k, (v, lab) in enumerate(tiles):
+        x = 0.05 + k * 0.31
+        fig.patches.append(Rectangle((x, 0.13), 0.28, 0.27, color="#f6f5f2", transform=fig.transFigure))
+        fig.text(x + 0.02, 0.36, v, fontsize=15, color=NAVY, fontweight="bold", va="top")
+        fig.text(x + 0.02, 0.235, textwrap.fill(lab, 24), fontsize=7.5, color=MUTED, va="top", linespacing=1.2)
+    fig.text(0.05, 0.045, "Data: nflverse · Python analysis", fontsize=7, color=MUTED)
+    FIG.mkdir(exist_ok=True)
+    fig.savefig(FIG / "7_verdict_card.png", dpi=200, facecolor=SURFACE)
+    plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1084,21 +1164,20 @@ def main():
             "p_at_least": poisson_binomial_tail(int(s3.os_wins.sum()), ps)}
     live_p = {"p_all_close_wins": float(lv.exp_os_pct ** int(lv.os_games)) if lv.os_wins == lv.os_games
               else binom_tail(int(lv.os_wins), int(lv.os_games), float(lv.exp_os_pct))}
-    as_of = str(live.gameday.max())
-    last_week = int(live.week.max())
+    # Data cut-off: the last league week with every game played (not Denver's last game date)
+    wk = sched[(sched.season == LIVE) & (sched.game_type == "REG")].groupby("week")
+    done = wk.home_score.apply(lambda s: s.notna().all())
+    last_week = int(done[done].index.max())
+    last_game = pd.Timestamp(wk.gameday.max()[last_week])
+    pulled = pd.Timestamp((RAW / "schedules.parquet").stat().st_mtime, unit="s")
+    cutoff = (f"{LIVE} season through week {last_week} (last game {last_game:%d %b %Y}); "
+              f"data pulled {pulled:%d %b %Y}")
 
     # ---- Charts
-    print("Drawing charts ...")
-    chart_expected(den)
-    chart_timelines(games, tl)
-    chart_history(pairs, big, hs, ts[(ts.team == TEAM) & (ts.season == SEASON)].iloc[0], live_ts)
-    chart_decided(games, bk, q4_total, lost_total)
-    chart_luck(g_luck)
-    chart_repeat(sig)
-
     s24 = seasons[seasons.season == 2024].iloc[0]
-    verdict = (f"Mostly luck, on top of a genuinely good team: about {den.epa_wins:.0f} wins of quality, "
-               f"plus about {den.wins - den.epa_wins:.0f} from close games that history says don't repeat.")
+    verdict = (f"A good team that won more close games than it can expect to repeat: about {den.epa_wins:.0f} "
+               f"wins of quality, plus about {den.wins - den.epa_wins:.0f} from late-game results that history "
+               "says don't carry over.")
     skill = [
         f"Top-{rank_net} efficiency (net EPA per play {den.net_epa:+.3f}): good enough for about "
         f"{den.epa_wins:.0f} wins, and to expect {pct(p_hat)} of close games, not 50%.",
@@ -1122,7 +1201,22 @@ def main():
         f"Even the late-game edges barely repeat: 4th-quarter defence r = {sg.loc['q4_def_epa', 'year_to_year_r']:.2f}, "
         f"QB late & close r = {sg.loc['late_close_dropback_epa', 'year_to_year_r']:.2f}.",
     ]
-    chart_verdict(verdict, skill, luck_pts)
+    print("Drawing charts ...")
+    for layout in LAYOUTS.values():
+        L.update(layout)
+        chart_expected(den)
+        chart_timelines(games, tl)
+        chart_history(pairs, big, hs, ts[(ts.team == TEAM) & (ts.season == SEASON)].iloc[0], live_ts)
+        chart_decided(games, bk, q4_total, lost_total)
+        chart_luck(g_luck)
+        chart_repeat(sig)
+        chart_verdict(verdict, skill, luck_pts)
+    L.update(LAYOUTS["desktop"])
+    chart_card(verdict, [
+        (record(den.wins, int(den.games)), "2025 regular-season record"),
+        (f"{k_os}-{n_os - k_os}", "in one-score games (8 points or fewer)"),
+        (f"{den.epa_wins:.1f}", "wins expected from efficiency"),
+    ])
 
     # ---- Tables and findings
     games_out = games.assign(
@@ -1143,7 +1237,8 @@ def main():
     checks.to_csv(OUT / "figure_checks.csv", index=False)
 
     F = {
-        "as_of": as_of, "last_week": last_week,
+        "cutoff": cutoff, "last_week": last_week, "last_game": f"{last_game:%Y-%m-%d}",
+        "data_pulled": f"{pulled:%Y-%m-%d}", "verdict": verdict,
         "checks": checks.to_dict("records"),
         "denver_2025": {k: (float(v) if isinstance(v, (int, float, np.number)) else v)
                         for k, v in den.items()},
@@ -1198,6 +1293,10 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         "close-game records don't carry over. The extra wins did not come from lucky bounces like fumbles or "
         "missed kicks. They came from winning fourth quarters, which also tends not to repeat from one season "
         "to the next.",
+        "**What “luck” means here:** results that don't repeat from one season to the next. It doesn't "
+        "mean the players did nothing right; winning a fourth quarter takes real plays. Section 6 measures the "
+        "narrowest kind of luck, chance plays such as fumble recoveries and missed kicks, and those actually "
+        "went against Denver.",
     ], img=("7_verdict.png", "Verdict panel listing the evidence for skill and for luck")))
 
     chk = pd.DataFrame(F["checks"])
@@ -1390,7 +1489,7 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         f"**{s24.os_record}** in one-score games with almost the same efficiency ({s24.net_epa:+.3f} net EPA per play "
         f"vs {den.net_epa:+.3f} in 2025). The team's quality barely changed, but the close-game record swung from "
         f"{s24.os_record} to {record(den.os_wins, n_os)}.",
-        f"**{LIVE} so far (through week {F['last_week']}, {F['as_of']}):** {lv.record} overall and **{lv.os_record} in "
+        f"**{LIVE} so far (through week {F['last_week']}):** {lv.record} overall and **{lv.os_record} in "
         f"one-score games**. Efficiency has dropped to {lv.net_epa:+.3f} (#{lv.net_epa_rank} of 32), so a team like "
         f"this would expect to win about {pct(lv.exp_os_pct)} of close games. Winning all {int(lv.os_games)} has a "
         f"{pct(live_p['p_all_close_wins'], 1)} chance. And unlike 2025, the chance plays in those games went "
@@ -1462,8 +1561,7 @@ def bold_md_to_html(t: str) -> str:
 
 
 def write_readme(S, F, method: str):
-    body = [f"*Generated by `analysis.py` from nflverse data through {LIVE} week {F['last_week']} ({F['as_of']}). "
-            f"Web page: {PAGE_URL}*\n"]
+    body = [f"*Generated by `analysis.py` from nflverse data: {F['cutoff']}. Web page: {PAGE_URL}*\n"]
     for s in S:
         body.append(f"### {s['title']}\n")
         body += [p + "\n" for p in s["paras"]]
@@ -1502,7 +1600,10 @@ p{margin:0 0 14px}
 .verdict{border-left:4px solid var(--orange);background:var(--soft);padding:14px 16px;border-radius:0 10px 10px 0;
 font-size:18px;margin:8px 0 18px}
 figure{margin:18px 0 22px}
+figure a{display:block}
 figure img{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px}
+figcaption{font-size:13px;color:var(--muted);margin-top:6px}
+.note{font-size:15.5px;background:var(--soft);border-radius:10px;padding:12px 14px}
 .tbl{overflow-x:auto;margin:10px 0 22px;-webkit-overflow-scrolling:touch}
 table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
 th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
@@ -1555,6 +1656,16 @@ def md_block_to_html(md: str) -> str:
     return "\n".join(out)
 
 
+def chart_html(name: str, alt: str, lazy: bool = True) -> str:
+    """A chart that links to its full-size PNG and swaps in the phone version on narrow screens."""
+    phone = name.replace(".png", "_phone.png")
+    load = ' loading="lazy"' if lazy else ""
+    return (f'<figure><a href="img/{name}" aria-label="Open the full-size chart"><picture>'
+            f'<source media="(max-width: 600px)" srcset="img/{phone}">'
+            f'<img src="img/{name}" alt="{_h.escape(alt)}"{load}></picture></a>'
+            f'<figcaption><a href="img/{name}">Open full-size chart</a></figcaption></figure>')
+
+
 def write_page(S, F, den, binom, method: str):
     SITE.mkdir(parents=True, exist_ok=True)
     (SITE / "img").mkdir(exist_ok=True)
@@ -1574,28 +1685,49 @@ def write_page(S, F, den, binom, method: str):
         parts.append(f'<section id="{s["id"]}"><h2>{bold_md_to_html(s["title"])}</h2>')
         parts += [f"<p>{bold_md_to_html(p)}</p>" for p in s["paras"]]
         if s.get("img"):
-            parts.append(f'<figure><img src="img/{s["img"][0]}" alt="{_h.escape(s["img"][1])}" loading="lazy"></figure>')
+            parts.append(chart_html(*s["img"]))
         if s.get("table") is not None:
             tbl = html_table(s["table"].astype(str).map(_h.escape))
             parts.append(tbl if len(s["table"]) <= 8 else f"<details><summary>Show the table</summary>{tbl}</details>")
         parts.append("</section>")
     verdict = S[0]
+    title = "Broncos 2025: Luck or Skill?"
+    desc = _h.escape(F["verdict"])
+    card = f"{PAGE_URL}img/7_verdict_card.png"
+    card_alt = "Verdict: " + desc
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Broncos 2025: Luck or Skill?</title>
-<meta name="description" content="Were the 2025 Denver Broncos' close wins luck or skill? A data analysis with public nflverse data.">
+<title>{title}</title>
+<meta name="description" content="{desc}">
+<link rel="canonical" href="{PAGE_URL}">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Sports analytics portfolio">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{desc}">
+<meta property="og:url" content="{PAGE_URL}">
+<meta property="og:image" content="{card}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="{card_alt}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{title}">
+<meta name="twitter:description" content="{desc}">
+<meta name="twitter:image" content="{card}">
+<meta name="twitter:image:alt" content="{card_alt}">
 <style>{PAGE_CSS}</style></head>
 <body><main>
 <p class="kicker">NFL data analysis · Python</p>
 <h1>Broncos 2025: luck or skill?</h1>
 <p class="lede">The 2025 Denver Broncos went {record(den.wins, int(den.games))} and won {k_os} of {n_os} games decided by
 8 points or fewer. Were they really that good in close games, or did those games break their way?</p>
-<p class="byline">Data: nflverse, through {LIVE} week {F['last_week']} ({F['as_of']}) ·
+<p class="byline">Data: nflverse · {F['cutoff']} ·
 <a href="{REPO_URL}/tree/main/broncos-luck-or-skill">Code and data on GitHub</a></p>
 <div class="tiles">{''.join(f'<div class="tile"><div class="v">{v}</div><div class="l">{l}</div></div>' for v, l in tiles)}</div>
 <div class="verdict">{bold_md_to_html(verdict['paras'][0])}</div>
 <p>{bold_md_to_html(verdict['paras'][1])}</p>
-<figure><img src="img/7_verdict.png" alt="Verdict panel listing the evidence for skill and for luck"></figure>
+<p class="note">{bold_md_to_html(verdict['paras'][2])}</p>
+{chart_html(*verdict['img'], lazy=False)}
 {''.join(parts)}
 <section id="method">{md_block_to_html(method)}</section>
 <footer>Data: <a href="https://github.com/nflverse">nflverse</a> (schedules, play-by-play, FTN charting) via the

@@ -1,6 +1,9 @@
 {
-  "as_of": "2026-10-15",
+  "cutoff": "2026 season through week 6 (last game 19 Oct 2026); data pulled 21 Oct 2026",
   "last_week": 6,
+  "last_game": "2026-10-19",
+  "data_pulled": "2026-10-21",
+  "verdict": "A good team that won more close games than it can expect to repeat: about 11 wins of quality, plus about 3 from late-game results that history says don't carry over.",
   "checks": [
     {
       "Figure": "2025 regular-season record",
