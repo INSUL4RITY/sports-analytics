@@ -1,0 +1,13 @@
+type,game_id,season,season_type,week,qtr,desc,luck,q,swing,good
+4th-down conversion,2025_13_DEN_WAS,2025,REG,13,4.0,"(:52) (No Huddle, Shotgun) 8-M.Mariota pass short middle to 86-Z.Ertz to DEN 37 for 8 yards (23-J.Barron).",-0.264,0.605,0.436,False
+4th-down conversion,2025_06_DEN_NYJ,2025,REG,6,4.0,(1:14) (Shotgun) 7-J.Fields sacked at NYJ 44 for -12 yards (sack split by 0-J.Cooper and 22-B.Jones).,0.183,0.605,0.463,True
+Opponent kick,2025_10_LV_DEN,2025,REG,10,4.0,"(4:30) 8-D.Carlson 48 yard field goal is No Good, Wide Right, Center-50-J.Bobenmoyer, Holder-6-A.Cole.",0.183,0.172,0.221,True
+Opponent kick,2025_02_DEN_IND,2025,REG,2,4.0,"(:00) 3-S.Shrader 45 yard field goal is GOOD, Center-46-L.Rhodes, Holder-8-R.Sanchez.",-0.163,0.172,0.949,False
+Fumble recovery,2025_01_TEN_DEN,2025,REG,1,4.0,"(11:53) 3-J.Hekker punts 46 yards to DEN 20, Center-46-M.Cox. 19-M.Mims MUFFS catch, RECOVERED by TEN-54-D.Mausi at DEN 24.",-0.159,0.6,0.265,False
+Interception luck,2025_10_LV_DEN,2025,REG,10,3.0,(5:34) (Shotgun) 7-G.Smith pass short middle intended for 2-A.Jeanty INTERCEPTED by 92-D.Tillman at DEN 44. 92-D.Tillman to LV 33 for 23 yards (87-M.Mayer).,0.15,0.003,0.15,True
+4th-down conversion,2025_02_DEN_IND,2025,REG,2,2.0,(7:32) (Shotgun) 84-T.Warren left tackle to 50 for no gain (92-D.Tillman).,0.146,0.317,0.214,True
+Fumble recovery,2025_06_DEN_NYJ,2025,REG,6,4.0,"(3:25) (Shotgun) 19-M.Mims up the middle to DEN 17 for -2 yards (21-B.Stephens, 95-Q.Williams). FUMBLES (95-Q.Williams), and recovers at DEN 17.",0.144,0.494,0.284,True
+Fumble recovery,2025_06_DEN_NYJ,2025,REG,6,4.0,"(2:23) (Shotgun) 7-J.Fields Aborted. 71-J.Myers FUMBLES at NYJ 38, recovered by NYJ-20-B.Hall at NYJ 38. 20-B.Hall to 50 for 12 yards (49-A.Singleton). ** Injury Update: NYJ-5-G.Wilson has returned to the game.",-0.141,0.506,0.279,False
+Interception luck,2025_07_NYG_DEN,2025,REG,7,4.0,"(1:01) (Shotgun) 6-J.Dart pass incomplete deep middle to 81-B.Collins (22-B.Jones, 9-T.Hufanga). DEN-22-B.Jones was injured during the play.",-0.117,0.465,0.251,False
+Interception luck,2025_10_LV_DEN,2025,REG,10,4.0,(7:16) (Shotgun) 10-B.Nix pass deep left intended for 11-T.Franklin INTERCEPTED by 36-K.Kelly at DEN 45. 36-K.Kelly to DEN 45 for no gain (11-T.Franklin).,-0.107,0.997,0.107,False
+4th-down conversion,2025_15_GB_DEN,2025,REG,15,4.0,"(9:03) (Shotgun) 10-B.Nix pass deep left to 14-C.Sutton ran ob at GB 15 for 26 yards. Green Bay challenged the pass completion ruling, and the play was Upheld. The ruling on the field stands. (Timeout #2.)",0.106,0.587,0.256,True

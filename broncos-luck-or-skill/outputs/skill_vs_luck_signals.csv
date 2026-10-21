@@ -1,0 +1,9 @@
+metric,label,den_2025,league_avg_2025,den_rank_2025,teams,year_to_year_r,n_pairs,repeats
+net_epa,Overall efficiency (net EPA per play),0.0974,-0.0008,6,32,0.4097,448,Repeats
+q4_def_epa,4th-quarter defence (EPA allowed per play),-0.1595,-0.0116,4,32,0.1298,448,Barely / not
+late_close_dropback_epa,"QB late & close (EPA per dropback, Q4/OT, within 8)",0.0804,0.0353,14,32,0.1578,448,Weakly
+fg_over_exp,Own field goals vs expected (per attempt),-0.0178,-0.0016,19,32,0.0846,448,Barely / not
+fumble_recovery_rate,Share of all fumbles recovered,0.3684,0.5006,29,32,0.0559,448,Barely / not
+opp_fg_over_exp,Opponents' field goals vs expected (per attempt),0.0564,-0.0016,26,32,0.0513,448,Barely / not
+to_margin_pg,Turnover margin per game,0.0588,0.0,12,32,0.1414,448,Barely / not
+os_win_pct,One-score win %,0.8462,0.4894,1,32,0.0995,448,Barely / not

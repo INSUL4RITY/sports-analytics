@@ -1,0 +1,381 @@
+{
+  "as_of": "2026-10-15",
+  "last_week": 6,
+  "checks": [
+    {
+      "Figure": "2025 regular-season record",
+      "Stated": "14-3",
+      "From the data": "14-3",
+      "Match": "yes"
+    },
+    {
+      "Figure": "2025 one-score record (8 points or fewer)",
+      "Stated": "11-2",
+      "From the data": "11-2",
+      "Match": "yes"
+    },
+    {
+      "Figure": "2025 point differential",
+      "Stated": "+90",
+      "From the data": "+90",
+      "Match": "yes"
+    },
+    {
+      "Figure": "Divisional round vs Buffalo",
+      "Stated": "W 33-30",
+      "From the data": "W 33-30",
+      "Match": "yes"
+    },
+    {
+      "Figure": "AFC Championship vs New England",
+      "Stated": "L 10-7",
+      "From the data": "L 10-7",
+      "Match": "yes"
+    },
+    {
+      "Figure": "2026 record so far",
+      "Stated": "4-2",
+      "From the data": "4-2",
+      "Match": "yes"
+    },
+    {
+      "Figure": "2026 one-score record so far",
+      "Stated": "4-0",
+      "From the data": "4-0",
+      "Match": "yes"
+    }
+  ],
+  "denver_2025": {
+    "team": "DEN",
+    "season": 2025.0,
+    "games": 17.0,
+    "wins": 14.0,
+    "pf": 401.0,
+    "pa": 311.0,
+    "os_games": 13.0,
+    "os_wins": 11.0,
+    "win_pct": 0.8235294117647058,
+    "os_win_pct": 0.8461538461538461,
+    "pyth_pct": 0.6462004822139266,
+    "pyth_wins": 10.985408197636751,
+    "off_epa": 0.03736567001114417,
+    "def_epa": -0.0600237430999631,
+    "net_epa": 0.09738941311110727,
+    "epa_wins": 11.032542618798503,
+    "exp_os_pct": 0.5777872099918322,
+    "wins_over_pyth": 3.014591802363249,
+    "wins_over_epa": 2.9674573812014966,
+    "os_wins_over_exp": 3.488766270106181
+  },
+  "net_epa_rank": 6,
+  "wins_over_epa_rank": 1,
+  "models": {
+    "epa_win_model": {
+      "intercept": 0.5005954716844078,
+      "slope": 1.5235498274309978,
+      "r2": 0.7779472901804763,
+      "n": 480
+    },
+    "epa_os_model": {
+      "intercept": 0.5018260094245377,
+      "slope": 0.7799739020978981,
+      "r2": 0.18557133012102633,
+      "n": 480,
+      "games": 4060
+    }
+  },
+  "binomial": {
+    "coin": 0.01123046875,
+    "expected": 0.041709931105027305,
+    "p_hat": 0.5777872099918322
+  },
+  "history": {
+    "n_big": 10,
+    "big_os_pct": 0.8482142857142857,
+    "big_os_pct_next": 0.4659090909090909,
+    "big_wins": 12.31875,
+    "big_wins_next": 8.83125,
+    "big_fewer_wins_next": 7,
+    "big_os_pct_next_below_60": 7,
+    "r_os": 0.07689829081790504,
+    "n_pairs_os": 736,
+    "r_win": 0.33246883594315646,
+    "n_pairs_win": 736,
+    "den_os_wins_rank": 1,
+    "n_team_seasons": 768,
+    "n_11plus": 3,
+    "list_11plus": [
+      {
+        "team": "MIN",
+        "season": 2022,
+        "os_wins": 11.0,
+        "os_games": 11
+      },
+      {
+        "team": "KC",
+        "season": 2024,
+        "os_wins": 11.0,
+        "os_games": 11
+      },
+      {
+        "team": "DEN",
+        "season": 2025,
+        "os_wins": 11.0,
+        "os_games": 13
+      }
+    ]
+  },
+  "q4_total_epa_close_wins": 47.69935346421961,
+  "to_st_total_epa_close_wins": -16.197777524262616,
+  "signals": [
+    {
+      "metric": "net_epa",
+      "label": "Overall efficiency (net EPA per play)",
+      "den_2025": 0.09738941311110727,
+      "league_avg_2025": -0.0008415492621755751,
+      "den_rank_2025": 6,
+      "teams": 32,
+      "year_to_year_r": 0.4096943212708775,
+      "n_pairs": 448,
+      "repeats": "Repeats"
+    },
+    {
+      "metric": "q4_def_epa",
+      "label": "4th-quarter defence (EPA allowed per play)",
+      "den_2025": -0.15949661418243555,
+      "league_avg_2025": -0.011553436277126568,
+      "den_rank_2025": 4,
+      "teams": 32,
+      "year_to_year_r": 0.12979821781092796,
+      "n_pairs": 448,
+      "repeats": "Barely / not"
+    },
+    {
+      "metric": "late_close_dropback_epa",
+      "label": "QB late & close (EPA per dropback, Q4/OT, within 8)",
+      "den_2025": 0.08038464125624349,
+      "league_avg_2025": 0.03528457913360982,
+      "den_rank_2025": 14,
+      "teams": 32,
+      "year_to_year_r": 0.15783000980932532,
+      "n_pairs": 448,
+      "repeats": "Weakly"
+    },
+    {
+      "metric": "fg_over_exp",
+      "label": "Own field goals vs expected (per attempt)",
+      "den_2025": -0.017813176156109046,
+      "league_avg_2025": -0.0016337235703655709,
+      "den_rank_2025": 19,
+      "teams": 32,
+      "year_to_year_r": 0.08459325578877432,
+      "n_pairs": 448,
+      "repeats": "Barely / not"
+    },
+    {
+      "metric": "fumble_recovery_rate",
+      "label": "Share of all fumbles recovered",
+      "den_2025": 0.3684210526315789,
+      "league_avg_2025": 0.5005722075615897,
+      "den_rank_2025": 29,
+      "teams": 32,
+      "year_to_year_r": 0.05592471258871083,
+      "n_pairs": 448,
+      "repeats": "Barely / not"
+    },
+    {
+      "metric": "opp_fg_over_exp",
+      "label": "Opponents' field goals vs expected (per attempt)",
+      "den_2025": 0.056406469424117936,
+      "league_avg_2025": -0.0015853972650574557,
+      "den_rank_2025": 26,
+      "teams": 32,
+      "year_to_year_r": 0.05128575427856842,
+      "n_pairs": 448,
+      "repeats": "Barely / not"
+    },
+    {
+      "metric": "to_margin_pg",
+      "label": "Turnover margin per game",
+      "den_2025": 0.058823529411764705,
+      "league_avg_2025": 0.0,
+      "den_rank_2025": 12,
+      "teams": 32,
+      "year_to_year_r": 0.14143462133258283,
+      "n_pairs": 448,
+      "repeats": "Barely / not"
+    },
+    {
+      "metric": "os_win_pct",
+      "label": "One-score win %",
+      "den_2025": 0.8461538461538461,
+      "league_avg_2025": 0.48935322490009986,
+      "den_rank_2025": 1,
+      "teams": 32,
+      "year_to_year_r": 0.09947468505825417,
+      "n_pairs": 448,
+      "repeats": "Barely / not"
+    }
+  ],
+  "wp_model": {
+    "mae_pts": 1.1552070533790464,
+    "p90_err_pts": 2.406177083816577,
+    "n_train": 366374,
+    "n_test": 40778
+  },
+  "chance_rates": {
+    "p_keep_fumble_scrimmage": 0.49412665985699694,
+    "p_keep_fumble_st": 0.5995850622406639,
+    "p_int_worthy": 0.46544368600682595,
+    "p_int_not_worthy": 0.002789815314226198,
+    "n_worthy_hist": 2344,
+    "fourth_conv_rate": {
+      "1": 0.6828823350562481,
+      "2": 0.5867393278837421,
+      "3": 0.5151098901098901,
+      "4-5": 0.47774750227066304,
+      "6-10": 0.3954802259887006,
+      "11+": 0.22889842632331903
+    },
+    "ko_start_2025": 69.0
+  },
+  "luck": {
+    "den_luck_2025": -0.7483241935882335,
+    "den_luck_rank_2025": 25,
+    "league_luck_sd_2025": 1.0451743605713022,
+    "den_luck_by_type_2025": {
+      "4th-down conversion": 0.2118140032929837,
+      "Fumble recovery": -0.4729325722984375,
+      "Interception luck": -0.12336837439826952,
+      "Opponent kick": -0.3638372501845102
+    },
+    "den_luck_close_games": -0.6654764490210912,
+    "n_decided_by_luck": 0,
+    "luck_year_to_year_r": 0.005305253370391745,
+    "luck_pairs": 96,
+    "n_chance_plays_den_2025": 1309,
+    "simulation": {
+      "expected_wins": 10.21255,
+      "n_games": 13,
+      "p10": 9.0,
+      "p90": 11.0,
+      "p_11_or_more": 0.4094,
+      "dist": {
+        "5": 5e-05,
+        "6": 0.0003,
+        "7": 0.00505,
+        "8": 0.04285,
+        "9": 0.17165,
+        "10": 0.3707,
+        "11": 0.3359,
+        "12": 0.0699,
+        "13": 0.0036
+      }
+    }
+  },
+  "luck_2026_close_games": {
+    "den_luck_2025": -0.7483241935882335,
+    "den_luck_rank_2025": 25,
+    "league_luck_sd_2025": 1.0451743605713022,
+    "den_luck_by_type_2025": {
+      "4th-down conversion": 0.2118140032929837,
+      "Fumble recovery": -0.4729325722984375,
+      "Interception luck": -0.12336837439826952,
+      "Opponent kick": -0.3638372501845102
+    },
+    "den_luck_close_games": 0.9094842399026123,
+    "n_decided_by_luck": 0,
+    "luck_year_to_year_r": 0.005305253370391745,
+    "luck_pairs": 96,
+    "n_chance_plays_den_2025": 1309,
+    "simulation": {
+      "expected_wins": 3.00395,
+      "n_games": 4,
+      "p10": 2.0,
+      "p90": 4.0,
+      "p_11_or_more": 0.0,
+      "dist": {
+        "0": 0.00345,
+        "1": 0.0406,
+        "2": 0.2116,
+        "3": 0.43725,
+        "4": 0.3071
+      }
+    }
+  },
+  "span_2024_2026": {
+    "os_wins": 16.0,
+    "os_games": 24,
+    "exp": 13.564096840221834,
+    "p_at_least": 0.2134036499542936
+  },
+  "live": {
+    "p_all_close_wins": 0.05663109898327044
+  },
+  "denver_by_season": [
+    {
+      "season": 2023,
+      "games": 17,
+      "record": "8-9",
+      "pf": 357.0,
+      "pa": 413.0,
+      "pyth_wins": 7.046731932758842,
+      "epa_wins": 6.8589354458708724,
+      "net_epa": -0.06375156165033664,
+      "net_epa_rank": 25,
+      "os_games": 9,
+      "os_wins": 5.0,
+      "os_record": "5-4",
+      "exp_os_pct": 0.4521014551192899,
+      "exp_os_wins": 4.068913096073609
+    },
+    {
+      "season": 2024,
+      "games": 17,
+      "record": "10-7",
+      "pf": 425.0,
+      "pa": 311.0,
+      "pyth_wins": 11.509457895736311,
+      "epa_wins": 11.303196138851433,
+      "net_epa": 0.10783921594038307,
+      "net_epa_rank": 8,
+      "os_games": 7,
+      "os_wins": 1.0,
+      "os_record": "1-6",
+      "exp_os_pct": 0.5859377834807361,
+      "exp_os_wins": 4.101564484365153
+    },
+    {
+      "season": 2025,
+      "games": 17,
+      "record": "14-3",
+      "pf": 401.0,
+      "pa": 311.0,
+      "pyth_wins": 10.985408197636751,
+      "epa_wins": 11.032542618798503,
+      "net_epa": 0.09738941311110727,
+      "net_epa_rank": 6,
+      "os_games": 13,
+      "os_wins": 11.0,
+      "os_record": "11-2",
+      "exp_os_pct": 0.5777872099918322,
+      "exp_os_wins": 7.511233729893819
+    },
+    {
+      "season": 2026,
+      "games": 6,
+      "record": "4-2",
+      "pf": 114.0,
+      "pa": 125.0,
+      "pyth_wins": 2.6738245981834243,
+      "epa_wins": 2.8394768869825864,
+      "net_epa": -0.017951053100831636,
+      "net_epa_rank": 19,
+      "os_games": 4,
+      "os_wins": 4.0,
+      "os_record": "4-0",
+      "exp_os_pct": 0.4878246564907155,
+      "exp_os_wins": 1.951298625962862
+    }
+  ]
+}
