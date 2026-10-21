@@ -1645,6 +1645,18 @@ details{margin:12px 0 18px}
 summary{cursor:pointer;color:var(--blue);font-weight:600}
 footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
 a{color:var(--blue)}
+figure a[data-full]{cursor:zoom-in}
+html:has(dialog.lightbox[open]){overflow:hidden}
+dialog.lightbox{padding:0;border:0;margin:0;width:100vw;height:100vh;max-width:none;max-height:none;
+background:rgba(12,14,18,.94);overflow:hidden}
+dialog.lightbox::backdrop{background:rgba(0,0,0,.6)}
+.lb-inner{height:100%;overflow:auto;display:flex;justify-content:center;align-items:flex-start;
+padding:60px 12px 24px;-webkit-overflow-scrolling:touch}
+.lb-inner img{width:100%;max-width:1100px;height:auto;border-radius:8px;background:#fff;cursor:default}
+@media(min-width:700px){.lb-inner{padding:64px 7vw 40px}}
+.lb-close{position:fixed;top:10px;right:12px;width:44px;height:44px;border:0;border-radius:22px;background:#fff;
+color:var(--navy);font-size:28px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.lb-hint{position:fixed;top:20px;left:16px;right:70px;margin:0;color:#fff;font-size:13px;opacity:.85}
 """
 
 
@@ -1686,13 +1698,53 @@ def md_block_to_html(md: str) -> str:
 
 
 def chart_html(name: str, alt: str, lazy: bool = True) -> str:
-    """A chart that links to its full-size PNG and swaps in the phone version on narrow screens."""
+    """A chart that opens full size in an overlay (plain link without JS); phone version on narrow screens."""
     phone = name.replace(".png", "_phone.png")
     load = ' loading="lazy"' if lazy else ""
-    return (f'<figure><a href="img/{name}" aria-label="Open the full-size chart"><picture>'
+    a = f'href="img/{name}" data-full data-alt="{_h.escape(alt)}"'
+    return (f'<figure><a {a} aria-label="Enlarge chart"><picture>'
             f'<source media="(max-width: 600px)" srcset="img/{phone}">'
             f'<img src="img/{name}" alt="{_h.escape(alt)}"{load}></picture></a>'
-            f'<figcaption><a href="img/{name}">Open full-size chart</a></figcaption></figure>')
+            f'<figcaption><a {a}>Enlarge chart</a></figcaption></figure>')
+
+
+# Full-size chart overlay: closes on a tap outside the chart, the × button, Esc, or the browser back button
+LIGHTBOX = """<dialog class="lightbox" id="lb" aria-label="Chart, full size">
+<div class="lb-inner"><img alt=""></div>
+<p class="lb-hint">Pinch or scroll to zoom · tap outside to close</p>
+<button type="button" class="lb-close" aria-label="Close">×</button>
+</dialog>
+<script>
+(() => {
+  const d = document.getElementById("lb");
+  if (!d || typeof d.showModal !== "function") return;
+  const img = d.querySelector("img");
+  // Browsers with CloseWatcher (Chrome, Edge, Android) already close a modal dialog on Esc and the
+  // back button; adding a history entry there would leave a stray one behind. Elsewhere, add one so
+  // the back button closes the chart instead of leaving the page.
+  const useHistory = !("CloseWatcher" in window);
+  let pushed = false;
+  function open(src, alt) {
+    img.src = src;
+    img.alt = alt;
+    d.showModal();
+    d.querySelector(".lb-inner").scrollTop = 0;
+    if (useHistory) { history.pushState({ lb: 1 }, ""); pushed = true; }
+  }
+  function dropHistoryEntry() {
+    if (pushed) { pushed = false; if (history.state && history.state.lb) history.back(); }
+  }
+  function shut() { if (d.open) d.close(); dropHistoryEntry(); }
+  d.addEventListener("close", dropHistoryEntry);  // Esc and other native closes
+  window.addEventListener("popstate", () => { if (d.open) { pushed = false; d.close(); } });
+  d.addEventListener("click", (e) => { if (e.target !== img) shut(); });
+  document.querySelectorAll("a[data-full]").forEach((a) => a.addEventListener("click", (e) => {
+    if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    open(a.href, a.dataset.alt || "");
+  }));
+})();
+</script>"""
 
 
 def write_page(S, F, den, binom, method: str):
@@ -1762,7 +1814,9 @@ def write_page(S, F, den, binom, method: str):
 <footer>Data: <a href="https://github.com/nflverse">nflverse</a> (schedules, play-by-play, FTN charting) via the
 nflreadpy Python package. Analysis, charts and page are reproduced by <code>analysis.py</code>.
 <a href="{REPO_URL}/tree/main/broncos-luck-or-skill">Source on GitHub</a>.</footer>
-</main></body></html>
+</main>
+{LIGHTBOX}
+</body></html>
 """
     (SITE / "index.html").write_text(page, encoding="utf-8")
 
