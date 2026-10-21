@@ -389,5 +389,202 @@
       "exp_os_pct": 0.4878246564907155,
       "exp_os_wins": 1.951298625962862
     }
+  ],
+  "win_ranges": {
+    "actual": 14.0,
+    "pyth_mean": 10.985408197636751,
+    "pyth_80": [
+      8.0,
+      13.0
+    ],
+    "pyth_p_actual": 0.09565,
+    "epa_mean": 11.032542618798503,
+    "epa_80": [
+      9.071315661119073,
+      12.993769576477934
+    ],
+    "epa_resid_sd": 1.5302956910732137,
+    "epa_p_actual": 0.05343685074398419,
+    "sim_mean": 11.6449,
+    "sim_80": [
+      9.0,
+      14.0
+    ],
+    "sim_p_actual": 0.1455,
+    "sim_dist": {
+      "4": 5e-05,
+      "5": 0.00015,
+      "6": 0.00185,
+      "7": 0.0081,
+      "8": 0.0276,
+      "9": 0.07635,
+      "10": 0.13865,
+      "11": 0.20485,
+      "12": 0.22405,
+      "13": 0.17285,
+      "14": 0.09905,
+      "15": 0.038,
+      "16": 0.00765,
+      "17": 0.0008
+    }
+  },
+  "margin_model": {
+    "home": 2.009306819715981,
+    "slope": 50.06771343150707,
+    "sd": 12.033216961506554,
+    "n": 3903
+  },
+  "close_game_models": {
+    "n_games": 1887,
+    "A": {
+      "log_loss": 0.6617660665711814,
+      "coefs": {
+        "site": 0.07189115339622101,
+        "d_net": 3.751411929075017
+      },
+      "den_exp_wins": 8.286612454656533,
+      "den_rate": 0.6374317272812717,
+      "p_at_least_actual": 0.08936146448822344
+    },
+    "B": {
+      "log_loss": 0.6869813704808636,
+      "coefs": {
+        "site": 0.05315302256749908,
+        "d_prev": 1.5003844661937427
+      },
+      "den_exp_wins": 7.157555815460896,
+      "den_rate": 0.550581216573915,
+      "p_at_least_actual": 0.026552603860660436
+    },
+    "C": {
+      "log_loss": 0.6870386328430361,
+      "coefs": {
+        "site": 0.053520157627876166,
+        "d_prev": 1.3333461964219715,
+        "d_qb": 0.33032608198724017,
+        "d_q4d": -0.28582351987306787
+      },
+      "den_exp_wins": 6.996545140687395,
+      "den_rate": 0.5381957800528766,
+      "p_at_least_actual": 0.02130319257485463
+    },
+    "coin_log_loss": 0.6931471805599453,
+    "den_games": 13
+  },
+  "matched_teams": {
+    "k": 10,
+    "wins17": 13.83125,
+    "wins17_next": 9.734375,
+    "next_min": 4.25,
+    "next_max": 13.8125,
+    "os_pct": 0.8333333333333334,
+    "os_pct_next": 0.4873417721518987,
+    "fewer_next": 9
+  },
+  "robustness": {
+    "thresholds": [
+      {
+        "points": 3,
+        "den_record": "6-2",
+        "den_games": 8,
+        "r": -0.04606704885418853,
+        "n_pairs": 721,
+        "exp_pct": 0.5561658895155757,
+        "p_at_least": 0.23083824650425147
+      },
+      {
+        "points": 7,
+        "den_record": "9-2",
+        "den_games": 11,
+        "r": 0.05359870771230799,
+        "n_pairs": 736,
+        "exp_pct": 0.5719487997854267,
+        "p_at_least": 0.0857847029371765
+      },
+      {
+        "points": 8,
+        "den_record": "11-2",
+        "den_games": 13,
+        "r": 0.07689829081790504,
+        "n_pairs": 736,
+        "exp_pct": 0.5777872099918322,
+        "p_at_least": 0.041709931105027305
+      },
+      {
+        "points": 10,
+        "den_record": "11-2",
+        "den_games": 13,
+        "r": 0.10746539386539311,
+        "n_pairs": 736,
+        "exp_pct": 0.5833028434839963,
+        "p_at_least": 0.045331321151204564
+      }
+    ],
+    "windows": [
+      {
+        "period": "2002\u20132012",
+        "r": 0.041134022768554865,
+        "n_pairs": 352,
+        "hot_n": 21,
+        "hot_pct": 0.7978142076502732,
+        "hot_pct_next": 0.5664556962025317
+      },
+      {
+        "period": "2013\u20132024",
+        "r": 0.10921186036601571,
+        "n_pairs": 384,
+        "hot_n": 33,
+        "hot_pct": 0.8171521035598706,
+        "hot_pct_next": 0.5066006600660066
+      }
+    ],
+    "rolling": {
+      "mae": 1.2312759297839913,
+      "den_pred": 11.032542618798503,
+      "den_gap": 2.9674573812014966,
+      "share_gap_ge": 0.021875,
+      "n": 320
+    },
+    "specs": [
+      {
+        "model": "Net EPA per play",
+        "den_exp_wins": 11.032542618798503
+      },
+      {
+        "model": "Offence and defence EPA separately",
+        "den_exp_wins": 11.002793661934216
+      },
+      {
+        "model": "Net EPA + point differential",
+        "den_exp_wins": 11.027976950725979
+      }
+    ]
+  },
+  "scorecard": [
+    {
+      "confidence": "High",
+      "finding": "Denver were a good team, but 14 wins overstated their underlying level.",
+      "evidence": "Points and efficiency both say about 11 wins; 20,000 simulated seasons put the middle 80% at 9\u201314, and 14+ wins in 15%. Only 2.2% of team-seasons since 2015 beat an out-of-sample efficiency forecast by as much."
+    },
+    {
+      "confidence": "High",
+      "finding": "An 11-2 one-score record is not a reliable baseline for future seasons.",
+      "evidence": "Close-game win % barely repeats (r = 0.08); the 10 teams most like Denver 2025 won 49% of close games the next year and 9 of 10 won fewer games; the same coach and QB went 1-6 in close games in 2024."
+    },
+    {
+      "confidence": "Moderate",
+      "finding": "Denver's fourth-quarter success was less repeatable than its overall efficiency.",
+      "evidence": "Across teams, 4th-quarter defence repeats at r = 0.13 and QB late & close at r = 0.16, against 0.41 for efficiency. Adding last season's late-game numbers to a close-game model did not improve its out-of-sample predictions (log loss 0.68704 with them vs 0.68698 without; lower is better)."
+    },
+    {
+      "confidence": "Moderate",
+      "finding": "The underlying quality came mainly from the defence.",
+      "evidence": "Defence ranked #1 in success rate allowed and #1 in red-zone TD rate allowed; the offence was #13 in EPA per play."
+    },
+    {
+      "confidence": "Still uncertain",
+      "finding": "How the roughly 3 extra wins split between chance, coaching, quarterback execution and other situational factors.",
+      "evidence": "Chance plays explain none of them (they went slightly against Denver), but the data can't separate repeatable late-game skill from a hot streak in one season; the 2026 start (4-0 in close games) is too short to settle it."
+    }
   ]
 }

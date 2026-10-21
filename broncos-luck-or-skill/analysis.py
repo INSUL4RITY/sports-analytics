@@ -64,6 +64,7 @@ PBP_COLS = [
     "field_goal_attempt", "field_goal_result", "kick_distance", "extra_point_attempt",
     "extra_point_result", "fourth_down_converted", "fourth_down_failed", "touchdown",
     "td_team", "sp", "qb_kneel", "qb_spike", "penalty",
+    "success", "qb_hit", "fixed_drive", "fixed_drive_result", "third_down_converted", "third_down_failed",
 ]
 
 
@@ -92,11 +93,11 @@ def load_all(refresh: bool):
     )
     pbp = []
     for s in range(PBP_FIRST, LIVE + 1):
-        pbp.append(cached(
-            f"pbp_{s}",
-            lambda s=s: nfl.load_pbp(s).to_pandas()[PBP_COLS],
-            refresh, live_age if s == LIVE else None,
-        ))
+        load = lambda s=s: nfl.load_pbp(s).to_pandas()[PBP_COLS]   # noqa: E731
+        df = cached(f"pbp_{s}", load, refresh, live_age if s == LIVE else None)
+        if not set(PBP_COLS) <= set(df.columns):   # cache made before a column was added
+            df = cached(f"pbp_{s}", load, True)
+        pbp.append(df)
         print(f"  play-by-play {s} loaded", end="\r")
     print()
     pbp = pd.concat(pbp, ignore_index=True)
@@ -725,6 +726,287 @@ def denver_seasons(m: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# 7. Season retrospective: game log, offence vs defence, win ranges, close-game models,
+#    matched teams and robustness checks
+# ---------------------------------------------------------------------------
+def game_log(tg: pd.DataFrame, pbp: pd.DataFrame, epa: pd.DataFrame, season: int) -> pd.DataFrame:
+    """All of Denver's regular-season games with the opponent's season-long efficiency."""
+    g = tg[(tg.team == TEAM) & (tg.season == season) & (tg.game_type == "REG")].sort_values("week")
+    s = scrimmage(pbp[pbp.game_id.isin(g.game_id)])
+    net = s[s.posteam == TEAM].groupby("game_id").epa.mean() - s[s.defteam == TEAM].groupby("game_id").epa.mean()
+    e = epa[epa.season == season].assign(rank=lambda d: d.net_epa.rank(ascending=False).astype(int))
+    e = e.set_index("team")
+    out = g.assign(
+        game=[f"Wk {w} {'vs' if h else '@'} {o}" for w, h, o in zip(g.week, g.home, g.opp)],
+        result=np.where(g.win == 1, "W", np.where(g.win == 0, "L", "T")),
+        den_net_epa=g.game_id.map(net), opp_net_epa=g.opp.map(e.net_epa), opp_rank=g.opp.map(e["rank"]),
+    )
+    return out[["game_id", "week", "game", "opp", "home", "result", "pf", "pa", "margin", "one_score",
+                "den_net_epa", "opp_net_epa", "opp_rank"]].reset_index(drop=True)
+
+
+PROFILE = [  # (side, metric, label, higher is better for Denver?)
+    ("Offence", "epa", "EPA per play", True), ("Offence", "success", "Success rate", True),
+    ("Offence", "pass_epa", "Pass EPA per dropback", True), ("Offence", "rush_epa", "Rush EPA per carry", True),
+    ("Offence", "sack_rate", "Sack rate (sacks per dropback)", False),
+    ("Offence", "explosive", "Explosive play rate", True), ("Offence", "third", "3rd-down conversion", True),
+    ("Offence", "red_zone", "Red-zone TD rate (drives)", True),
+    ("Defence", "epa", "EPA allowed per play", False), ("Defence", "success", "Success rate allowed", False),
+    ("Defence", "pass_epa", "Pass EPA allowed per dropback", False),
+    ("Defence", "rush_epa", "Rush EPA allowed per carry", False),
+    ("Defence", "sack_rate", "Sack rate (sacks per dropback)", True),
+    ("Defence", "qb_hit", "QB-hit rate (per dropback)", True),
+    ("Defence", "explosive", "Explosive plays allowed", False), ("Defence", "third", "3rd-down conversions allowed", False),
+    ("Defence", "red_zone", "Red-zone TD rate allowed", False),
+]
+
+
+def off_def_profile(pbp: pd.DataFrame, seasons=(2024, 2025)) -> pd.DataFrame:
+    """Offence and defence, split by play type and situation, for every team; Denver's values and ranks."""
+    reg = pbp[(pbp.season.isin(seasons)) & (pbp.season_type == "REG")]
+    s = scrimmage(reg).assign(
+        expl=lambda d: (((d["pass"] == 1) & (d.yards_gained >= 20)) | ((d.rush == 1) & (d.yards_gained >= 10))))
+    third = reg[(reg.down == 3) & ((reg.third_down_converted == 1) | (reg.third_down_failed == 1))]
+    rz = s[s.yardline_100 <= 20].groupby(["game_id", "fixed_drive"]).agg(
+        posteam=("posteam", "first"), defteam=("defteam", "first"), season=("season", "first"),
+        td=("fixed_drive_result", lambda r: (r == "Touchdown").any()))
+    drop = s[s.qb_dropback == 1]
+    rows = {}
+    for side, key in (("Offence", "posteam"), ("Defence", "defteam")):
+        k = [key, "season"]
+        rows[side] = pd.DataFrame({
+            "epa": s.groupby(k).epa.mean(), "success": s.groupby(k).success.mean(),
+            "pass_epa": s[s["pass"] == 1].groupby(k).epa.mean(), "rush_epa": s[s.rush == 1].groupby(k).epa.mean(),
+            "sack_rate": drop.groupby(k).sack.mean(), "qb_hit": drop.groupby(k).qb_hit.mean(),
+            "explosive": s.groupby(k).expl.mean(), "third": third.groupby(k).third_down_converted.mean(),
+            "red_zone": rz.groupby(k).td.mean(),
+        })
+        rows[side].index.names = ["team", "season"]
+    out = []
+    for side, metric, label, higher in PROFILE:
+        col = rows[side][metric].unstack("season")
+        rec = {"side": side, "metric": metric, "label": label}
+        for yr in seasons:
+            v = col[yr]
+            rank = v.rank(ascending=not higher, method="min")
+            rec[f"den_{yr}"], rec[f"rank_{yr}"], rec[f"league_{yr}"] = float(v[TEAM]), int(rank[TEAM]), float(v.mean())
+        out.append(rec)
+    return pd.DataFrame(out)
+
+
+def fit_margin_model(tg: pd.DataFrame, epa: pd.DataFrame):
+    """Game margin from season-long efficiency gap and home field: margin = h*site + b*(net - opp_net)."""
+    g = tg[(tg.game_type == "REG") & tg.season.isin(FIT)].merge(
+        epa[["team", "season", "net_epa"]], on=["team", "season"]).merge(
+        epa[["team", "season", "net_epa"]].rename(columns={"team": "opp", "net_epa": "opp_net"}),
+        on=["opp", "season"])
+    g = g[g.home == 1]   # one row per game
+    X = np.column_stack([np.ones(len(g)), g.net_epa - g.opp_net])
+    beta, *_ = np.linalg.lstsq(X, g.margin.values, rcond=None)
+    sd = float(np.std(g.margin.values - X @ beta, ddof=2))
+    return {"home": float(beta[0]), "slope": float(beta[1]), "sd": sd, "n": len(g)}
+
+
+def win_ranges(den: pd.Series, log: pd.DataFrame, mm: dict, models: dict, m: pd.DataFrame) -> dict:
+    """Plausible win totals instead of single numbers."""
+    n = int(den.games)
+    # 1) Pythagorean: a team that wins p of its games still ends anywhere in a binomial range
+    p = float(den.pyth_pct)
+    pyth = np.random.default_rng(7).binomial(n, p, N_SIMS)
+    # 2) Efficiency regression: its prediction error across team-seasons
+    fit = m[m.season.isin(FIT)]
+    a, b = models["epa_win_model"]["intercept"], models["epa_win_model"]["slope"]
+    resid_sd = float(np.std(fit.win_pct - (a + b * fit.net_epa), ddof=2) * n)
+    # 3) Game-by-game: Denver's and each opponent's season efficiency, home field and normal game-to-game noise
+    site = np.where(log.home == 1, 1.0, -1.0)
+    mu = mm["home"] * site + mm["slope"] * (den.net_epa - log.opp_net_epa.values)
+    margins = RNG.normal(mu, mm["sd"], (N_SIMS, len(mu)))
+    sim = (margins > 0).sum(axis=1)
+    q = lambda x: (float(np.percentile(x, 10)), float(np.percentile(x, 90)))   # noqa: E731
+    return {
+        "actual": float(den.wins),
+        "pyth_mean": float(den.pyth_wins), "pyth_80": q(pyth), "pyth_p_actual": float((pyth >= den.wins).mean()),
+        "epa_mean": float(den.epa_wins), "epa_80": (float(den.epa_wins - 1.2816 * resid_sd),
+                                                     float(den.epa_wins + 1.2816 * resid_sd)),
+        "epa_resid_sd": resid_sd,
+        "epa_p_actual": float(1 - _norm_cdf((den.wins - 0.5 - den.epa_wins) / resid_sd)[0]),
+        "sim_mean": float(sim.mean()), "sim_80": q(sim), "sim_p_actual": float((sim >= den.wins).mean()),
+        "sim_dist": {int(k): float(v) for k, v in pd.Series(sim).value_counts(normalize=True).sort_index().items()},
+        "game_p": [float(x) for x in 1 - _norm_cdf(-mu / mm["sd"])],
+    }
+
+
+def _norm_cdf(x):
+    from math import erf, sqrt
+    return np.array([0.5 * (1 + erf(v / sqrt(2))) for v in np.atleast_1d(x)])
+
+
+def close_game_models(tg: pd.DataFrame, epa: pd.DataFrame, sm: pd.DataFrame, games: pd.DataFrame) -> dict:
+    """Four views of Denver's expected close-game record, fitted on 2011-2024 one-score games.
+
+    A: season-long efficiency of both teams + home field (the full-game profile)
+    B: pregame strength only (both teams' previous-season efficiency + home field)
+    C: B plus previous-season late-game performance (QB late & close, 4th-quarter defence)
+    Season-by-season cross-validation shows whether late-game ability adds anything out of sample."""
+    from sklearn.linear_model import LogisticRegression
+    feat = sm[["team", "season", "net_epa", "late_close_dropback_epa", "q4_def_epa"]].copy()
+    prev = feat.assign(season=feat.season + 1).rename(columns={
+        "net_epa": "prev_net", "late_close_dropback_epa": "prev_qb", "q4_def_epa": "prev_q4d"})
+    feat = feat[["team", "season", "net_epa"]].merge(prev, on=["team", "season"], how="left")
+
+    def build(d):
+        d = d.merge(feat, on=["team", "season"]).merge(
+            feat.rename(columns=lambda c: c if c == "season" else "opp_" + c).rename(columns={"opp_team": "opp"}),
+            on=["opp", "season"])
+        d["site"] = np.where(d.home == 1, 1.0, -1.0)
+        d["d_net"], d["d_prev"] = d.net_epa - d.opp_net_epa, d.prev_net - d.opp_prev_net
+        d["d_qb"], d["d_q4d"] = d.prev_qb - d.opp_prev_qb, -(d.prev_q4d - d.opp_prev_q4d)
+        return d
+
+    hist = tg[(tg.game_type == "REG") & tg.one_score & (tg.margin != 0) & tg.season.between(PBP_FIRST + 1, FIT.stop - 1)]
+    hist = build(hist[hist.home == 1]).dropna(subset=["d_prev", "d_qb", "d_q4d"])
+    specs = {"A": ["site", "d_net"], "B": ["site", "d_prev"], "C": ["site", "d_prev", "d_qb", "d_q4d"]}
+    y = (hist.margin > 0).astype(int).values
+    res = {"n_games": len(hist)}
+    den = build(tg[tg.game_id.isin(games.game_id) & (tg.team == TEAM)])
+    for name, cols in specs.items():
+        losses = []
+        for s in sorted(hist.season.unique()):   # leave one season out
+            tr, te = hist.season != s, hist.season == s
+            mdl = LogisticRegression(C=1e6, max_iter=1000).fit(hist.loc[tr, cols], y[tr])
+            pr = np.clip(mdl.predict_proba(hist.loc[te, cols])[:, 1], 1e-6, 1 - 1e-6)
+            losses.append(-(y[te] * np.log(pr) + (1 - y[te]) * np.log(1 - pr)))
+        mdl = LogisticRegression(C=1e6, max_iter=1000).fit(hist[cols], y)
+        p = mdl.predict_proba(den[cols])[:, 1]
+        res[name] = {"log_loss": float(np.concatenate(losses).mean()), "coefs": dict(zip(cols, map(float, mdl.coef_[0]))),
+                     "den_exp_wins": float(p.sum()), "den_rate": float(p.mean()),
+                     "p_at_least_actual": poisson_binomial_tail(int((den.win == 1).sum()), p)}
+    res["coin_log_loss"] = float(np.log(2))
+    res["den_games"] = len(den)
+    return res
+
+
+def matched_teams(ts: pd.DataFrame, epa: pd.DataFrame, k: int = 10):
+    """The k team-seasons (2010-2024) most like Denver 2025 on efficiency, points and close-game record."""
+    cols = ["net_epa", "pd_pg", "os_win_pct", "win_pct"]
+    t = ts.merge(epa, on=["team", "season"]).assign(pd_pg=lambda d: (d.pf - d.pa) / d.games)
+    nxt = t[["team", "season", "wins", "games", "os_wins", "os_games"]].assign(season=lambda d: d.season - 1)
+    pool = t[t.season.isin(FIT)].merge(nxt, on=["team", "season"], suffixes=("", "_next")).dropna(subset=cols)
+    den = t.loc[(t.team == TEAM) & (t.season == SEASON), cols].iloc[0].astype(float)
+    sd = pool[cols].std()
+    pool["distance"] = np.sqrt((((pool[cols] - den) / sd) ** 2).sum(axis=1))
+    near = pool.nsmallest(k, "distance").copy()
+    near["wins17"] = near.wins / near.games * 17
+    near["wins17_next"] = near.wins_next / near.games_next * 17
+    summary = {
+        "k": k, "wins17": float(near.wins17.mean()), "wins17_next": float(near.wins17_next.mean()),
+        "next_min": float(near.wins17_next.min()), "next_max": float(near.wins17_next.max()),
+        "os_pct": float(near.os_wins.sum() / near.os_games.sum()),
+        "os_pct_next": float(near.os_wins_next.sum() / near.os_games_next.sum()),
+        "fewer_next": int((near.wins17_next < near.wins17).sum()),
+    }
+    return near, summary
+
+
+def os_counts(tg: pd.DataFrame, threshold: int) -> pd.DataFrame:
+    reg = tg[(tg.game_type == "REG") & (tg.margin.abs() <= threshold)]
+    return reg.groupby(["team", "season"]).agg(g=("win", "size"), w=("win", "sum")).reset_index()
+
+
+def robustness(tg: pd.DataFrame, ts: pd.DataFrame, epa: pd.DataFrame, den: pd.Series) -> dict:
+    out = {"thresholds": [], "windows": [], "rolling": {}, "specs": []}
+    base = ts[["team", "season"]]
+    m = ts.merge(epa, on=["team", "season"])
+    for t in (3, 7, 8, 10):   # alternative definitions of a close game
+        c = base.merge(os_counts(tg, t), on=["team", "season"], how="left").fillna(0)
+        c["pct"] = c.w / c.g.replace(0, np.nan)
+        nx = c.assign(season=c.season - 1)
+        pr = c.merge(nx, on=["team", "season"], suffixes=("", "_n"))
+        pr = pr[pr.season.between(HIST_FIRST, SEASON - 1)].dropna(subset=["pct", "pct_n"])
+        f = m.merge(c, on=["team", "season"])
+        fo = f[f.season.isin(FIT) & (f.g > 0)]
+        a, b, _ = ols(fo.net_epa.values, fo.pct.values, fo.g.values)
+        d = c[(c.team == TEAM) & (c.season == SEASON)].iloc[0]
+        p = float(a + b * den.net_epa)
+        out["thresholds"].append({
+            "points": t, "den_record": record(d.w, int(d.g)), "den_games": int(d.g),
+            "r": float(np.corrcoef(pr.pct, pr.pct_n)[0, 1]), "n_pairs": len(pr), "exp_pct": p,
+            "p_at_least": binom_tail(int(d.w), int(d.g), p) if d.g else np.nan})
+    pairs = ts.merge(ts.assign(season=ts.season - 1)[["team", "season", "os_win_pct", "os_games"]],
+                     on=["team", "season"], suffixes=("", "_n")).dropna(subset=["os_win_pct", "os_win_pct_n"])
+    for lo, hi in ((HIST_FIRST, 2012), (2013, SEASON - 1)):   # different historical periods
+        w = pairs[pairs.season.between(lo, hi)]
+        hot = w[(w.os_win_pct >= 0.75) & (w.os_games >= 8)]
+        out["windows"].append({
+            "period": f"{lo}–{hi}", "r": float(np.corrcoef(w.os_win_pct, w.os_win_pct_n)[0, 1]), "n_pairs": len(w),
+            "hot_n": len(hot), "hot_pct": float((hot.os_win_pct * hot.os_games).sum() / hot.os_games.sum()),
+            "hot_pct_next": float((hot.os_win_pct_n * hot.os_games_n).sum() / hot.os_games_n.sum())})
+    # Rolling out-of-sample: predict each season's wins from efficiency using only earlier seasons
+    errs, gaps = [], []
+    for s in range(2015, SEASON + 1):
+        tr, te = m[m.season.between(PBP_FIRST, s - 1)], m[m.season == s]
+        a, b, _ = ols(tr.net_epa.values, tr.win_pct.values)
+        pred = (a + b * te.net_epa) * te.games
+        errs.append((te.wins - pred).abs())
+        if s < SEASON:
+            gaps.append(te.wins - pred)
+        else:
+            den_pred = float(pred[te.team == TEAM].iloc[0])
+    gaps = pd.concat(gaps)
+    out["rolling"] = {"mae": float(pd.concat(errs).mean()), "den_pred": den_pred, "den_gap": float(den.wins - den_pred),
+                      "share_gap_ge": float((gaps >= den.wins - den_pred).mean()), "n": len(gaps)}
+    # Other ways to model expected wins from efficiency
+    fit = m[m.season.isin(FIT)]
+    cur = m[(m.team == TEAM) & (m.season == SEASON)]
+    for label, cols in (("Net EPA per play", ["net_epa"]), ("Offence and defence EPA separately", ["off_epa", "def_epa"]),
+                        ("Net EPA + point differential", ["net_epa", "pd"])):
+        F_ = fit.assign(pd=(fit.pf - fit.pa) / fit.games)
+        X = np.column_stack([np.ones(len(F_))] + [F_[c] for c in cols])
+        beta, *_ = np.linalg.lstsq(X, F_.win_pct.values, rcond=None)
+        C_ = cur.assign(pd=(cur.pf - cur.pa) / cur.games)
+        xd = np.r_[1.0, [float(C_[c].iloc[0]) for c in cols]]
+        out["specs"].append({"model": label, "den_exp_wins": float(xd @ beta * den.games)})
+    return out
+
+
+def compare_seasons(tg, pbp, sm, luck_by_season, close, close_luck, years=(2024, 2025)) -> pd.DataFrame:
+    """Denver season vs season: overall quality, late-game play, and what decided the close games."""
+    rows = {}
+    for yr in years:
+        reg = pbp[(pbp.season == yr) & (pbp.season_type == "REG")]
+        s = scrimmage(reg)
+        g = tg[(tg.team == TEAM) & (tg.season == yr) & (tg.game_type == "REG")]
+        os_ = g[g.one_score]
+        sm_ = sm[(sm.team == TEAM) & (sm.season == yr)].iloc[0]
+        go = reg[(reg.posteam == TEAM) & (reg.down == 4) & reg.play_type.isin(["pass", "run"])]
+        bk, games = close[yr], close_luck[yr]
+        n_close = len(games)
+        lk = luck_by_season[(luck_by_season.team == TEAM) & (luck_by_season.season == yr)].luck
+        rows[yr] = {
+            "Record (one-score)": f"{record(g.win.sum(), len(g))} ({record(os_.win.sum(), len(os_))})",
+            "Point differential": f"{int(g.margin.sum()):+d}",
+            "Net EPA per play": f"{sm_.net_epa:+.3f}",
+            "Offence EPA per play (Q4/OT)": f"{s[(s.posteam == TEAM) & (s.qtr >= 4)].epa.mean():+.3f}",
+            "Defence EPA allowed per play (Q4/OT)": f"{sm_.q4_def_epa:+.3f}",
+            "QB EPA per dropback, late & close": f"{sm_.late_close_dropback_epa:+.3f}",
+            "Turnover margin per game": f"{sm_.to_margin_pg:+.2f}",
+            "Share of all fumbles recovered": pct(sm_.fumble_recovery_rate),
+            "Own FGs vs expected (per 100)": f"{100 * sm_.fg_over_exp:+.1f}",
+            "Opponents' FGs vs expected (per 100)": f"{100 * sm_.opp_fg_over_exp:+.1f}",
+            "Chance-play luck, season (wins)": f"{float(lk.iloc[0]):+.2f}" if len(lk) else "n/a",
+            "4th-down tries (converted)": f"{len(go)} ({int((go.fourth_down_converted == 1).sum())})",
+            "Close games: EPA per game, Q4/OT offence + defence":
+                f"{(bk['Q4/OT offence'] + bk['Q4/OT defence']).sum() / max(n_close, 1):+.1f}",
+            "Close games: EPA per game, turnovers + kicks":
+                f"{(bk['Turnovers'] + bk['Special teams & kicks']).sum() / max(n_close, 1):+.1f}",
+            "Close games: chance-play luck per game (WP pts)":
+                f"{100 * games.luck_total.sum() / max(n_close, 1):+.0f}",
+            "Games decided by 3 points or fewer": f"{int((g.margin.abs() <= 3).sum())} ({record(g[g.margin.abs() <= 3].win.sum(), int((g.margin.abs() <= 3).sum()))})",
+        }
+    return pd.DataFrame(rows).rename(columns=str).rename_axis("Stat").reset_index()
+
+
+# ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
 import textwrap                                         # noqa: E402
@@ -1048,6 +1330,107 @@ def chart_verdict(verdict: str, skill: list[str], luck: list[str]):
     save(fig, "7_verdict")
 
 
+def chart_game_log(log: pd.DataFrame):
+    d = log.iloc[::-1].reset_index(drop=True)
+    wins = log[log.result == "W"]
+    close_w = int(wins.one_score.sum())
+    fig, ax = frame(6.4, f"{record((log.result == 'W').sum(), len(log))}, but {close_w} of the {len(wins)} wins came "
+                         f"by {ONE_SCORE} points or fewer",
+                    "Final margin of every 2025 regular-season game. Shaded band = one-score games. "
+                    "Opponent's season efficiency rank (of 32) in brackets.")
+    ax = ax[0, 0]
+    y = np.arange(len(d))
+    ax.axvspan(-ONE_SCORE, ONE_SCORE, color=GRID, alpha=0.6, lw=0, zorder=0)
+    ax.barh(y, d.margin, height=0.6, color=np.where(d.result == "W", ORANGE, BLUE), edgecolor=SURFACE, linewidth=1.5)
+    for yi, r in zip(y, d.itertuples()):
+        ax.text(r.margin + (0.8 if r.margin >= 0 else -0.8), yi, f"{int(r.pf)}-{int(r.pa)}", va="center",
+                ha="left" if r.margin >= 0 else "right", fontsize=fs(9.5), color=INK)
+    lab = [(g.replace("Wk ", "Wk").replace(" vs ", " ").replace(" @ ", " @") if L["phone"] else g) + f" (#{r})"
+           for g, r in zip(d.game, d.opp_rank)]
+    ax.set_yticks(y, lab, fontsize=10.5 if L["phone"] else 10)
+    ax.axvline(0, color=MUTED, lw=1)
+    ax.set_xlim(-30 if L["phone"] else -22, 33)
+    ax.set_xlabel("Final margin (points)" if L["phone"] else "Denver's final margin (points)")
+    ax.grid(axis="y", visible=False)
+    handles = [Rectangle((0, 0), 1, 1, color=ORANGE), Rectangle((0, 0), 1, 1, color=BLUE),
+               Rectangle((0, 0), 1, 1, color=GRID)]
+    labels = ["Win", "Loss", "One-score band"]
+    if L["phone"]:
+        fig.subplots_adjust(left=0.44, bottom=fig.subplotpars.bottom + 0.04)
+        fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.035), ncol=3, fontsize=fs(9.5),
+                   handlelength=1, columnspacing=1)
+    else:
+        ax.legend(handles, labels, loc="upper right", fontsize=9.5, handlelength=1)
+        fig.subplots_adjust(left=0.26)
+    save(fig, "8_game_by_game")
+
+
+def chart_win_range(wr: dict):
+    dist = pd.Series(wr["sim_dist"]).sort_index()
+    act = int(wr["actual"])
+    lo, hi = wr["sim_80"]
+    fig, ax = frame(4.2, f"Denver's underlying strength points to {lo:.0f}–{hi:.0f} wins; {act} or more happened "
+                         f"in {pct(wr['sim_p_actual'])} of simulated seasons",
+                    f"{N_SIMS:,} simulated 2025 seasons. Each game is drawn from both teams' season-long efficiency, "
+                    "home field and normal game-to-game variation.")
+    ax = ax[0, 0]
+    ax.bar(dist.index, 100 * dist.values, width=0.7, color=[ORANGE if k == act else GRAY for k in dist.index],
+           edgecolor=SURFACE, linewidth=1.5)
+    for k, v in dist.items():
+        if v >= 0.01:
+            ax.text(k, 100 * v + 0.4, f"{100 * v:.0f}%", ha="center", va="bottom", fontsize=fs(9), color=MUTED)
+    top = 100 * dist.max() + 6
+    ax.annotate("", xy=(lo - 0.35, top), xytext=(hi + 0.35, top),
+                arrowprops=dict(arrowstyle="|-|", color=BLUE, lw=1.6, shrinkA=0, shrinkB=0))
+    ax.text((lo + hi) / 2, top + 1.2, f"Middle 80%: {lo:.0f}–{hi:.0f} wins", ha="center", va="bottom",
+            fontsize=fs(10), color=INK)
+    ax.text(act + 0.45, 100 * dist.get(act, 0) + 1.5, f"Actual: {act}", ha="left", va="bottom", fontsize=fs(10.5),
+            fontweight="bold", color=INK)
+    ax.set_xticks(range(int(dist.index.min()), int(dist.index.max()) + 1, 2 if L["phone"] else 1))
+    ax.set_ylim(0, top + 6)
+    ax.set_yticks([0, 10, 20], ["0", "10", "20%"])
+    ax.set_xlabel("Wins in the season")
+    ax.grid(axis="x", visible=False)
+    fig.subplots_adjust(left=0.12 if L["phone"] else 0.08)
+    save(fig, "9_win_range")
+
+
+def chart_two_seasons(tg: pd.DataFrame, years=(2024, 2025)):
+    fig, ax = frame(3.2, "Same coach and quarterback, opposite close-game results: "
+                         + ", ".join(f"{record(*_os(tg, y))} in {y}" for y in years),
+                    "Every regular-season game's final margin. Shaded band = one-score games "
+                    f"({ONE_SCORE} points or fewer). Orange = win, blue = loss.")
+    ax = ax[0, 0]
+    ax.axvspan(-ONE_SCORE, ONE_SCORE, color=GRID, alpha=0.6, lw=0, zorder=0)
+    for i, yr in enumerate(years[::-1]):
+        g = tg[(tg.team == TEAM) & (tg.season == yr) & (tg.game_type == "REG")].sort_values("margin")
+        seen, counts = {}, g.margin.value_counts()
+        for mgn, w in zip(g.margin, g.win):   # stack games with the same margin vertically
+            k = seen.get(mgn, 0)
+            seen[mgn] = k + 1
+            ax.scatter(mgn, i + (k - (counts[mgn] - 1) / 2) * 0.18, s=70, color=ORANGE if w == 1 else BLUE,
+                       edgecolor=SURFACE, linewidth=1.5, zorder=3)
+    labels = [f"{y}\n{record(*_rec(tg, y))}" for y in years[::-1]]
+    ax.set_yticks(range(len(years)), labels, fontsize=11)
+    ax.set_ylim(-0.6, len(years) - 0.4)
+    ax.axvline(0, color=MUTED, lw=1)
+    ax.set_xlim(-30, 30)
+    ax.set_xlabel("Denver's final margin (points)")
+    ax.grid(axis="y", visible=False)
+    fig.subplots_adjust(left=0.2 if L["phone"] else 0.12)
+    save(fig, "10_2024_vs_2025")
+
+
+def _rec(tg, yr):
+    g = tg[(tg.team == TEAM) & (tg.season == yr) & (tg.game_type == "REG")]
+    return g.win.sum(), len(g)
+
+
+def _os(tg, yr):
+    g = tg[(tg.team == TEAM) & (tg.season == yr) & (tg.game_type == "REG") & tg.one_score]
+    return g.win.sum(), len(g)
+
+
 def chart_card(verdict: str, tiles: list[tuple[str, str]]):
     """1200x630 link-preview image (Open Graph / Twitter) built from the verdict."""
     fig = plt.figure(figsize=(6.0, 3.15))
@@ -1192,16 +1575,69 @@ def main():
     cutoff = (f"{LIVE} season through week {last_week} (last game {last_game:%d %b %Y}); "
               f"data pulled {pulled:%d %b %Y}")
 
-    # ---- Charts
+    # 7. Season retrospective
+    print("Retrospective: game log, offence/defence, win ranges, close-game models ...")
+    log = game_log(tg, pbp, epa, SEASON)
+    prof = off_def_profile(pbp)
+    pf_ = prof.set_index(["side", "metric"])
+    mm = fit_margin_model(tg, epa)
+    wr = win_ranges(den, log, mm, models, m)
+    cgm = close_game_models(tg, epa, sm, games)
+    near, ms = matched_teams(ts, epa)
+    rb = robustness(tg, ts, epa, den)
+    games24, _, bk24, _ = close_games(tg, pbp, 2024)
+    g24 = luck_tables(chance, games24, tg)[0]
+    y2y = compare_seasons(tg, pbp, sm, luck_by_season, {2024: bk24, SEASON: bk}, {2024: g24, SEASON: g_luck})
+    po_full, _, po_bk, _ = close_games(tg, pbp, SEASON, "POST")
+    po_luck = luck_tables(chance, po_full, tg)[0].set_index("game_id").luck_total
+    s_po = scrimmage(pbp[pbp.game_id.isin(po_full.game_id)])
+    po_net = (s_po[s_po.posteam == TEAM].groupby("game_id").epa.mean()
+              - s_po[s_po.defteam == TEAM].groupby("game_id").epa.mean())
+    erank = epa[epa.season == SEASON].assign(rank=lambda d: d.net_epa.rank(ascending=False).astype(int)).set_index("team")
+    po_tab = po_full.assign(net_pp=po_full.game_id.map(po_net), luck=po_full.game_id.map(po_luck),
+                            opp_rank=po_full.opp.map(erank["rank"]))
+    po_tab["round"] = po_tab.week.map({19: "Wild card", 20: "Divisional", 21: "AFC Championship", 22: "Super Bowl"})
+    reg_q4 = float((bk["Q4/OT offence"] + bk["Q4/OT defence"]).mean())   # per regular-season close game
     s24 = seasons[seasons.season == 2024].iloc[0]
+
+    scorecard = [
+        ("High", f"Denver were a good team, but {den.wins:.0f} wins overstated their underlying level.",
+         f"Points and efficiency both say about {(den.pyth_wins + den.epa_wins) / 2:.0f} wins; {N_SIMS:,} simulated seasons "
+         f"put the middle 80% at {wr['sim_80'][0]:.0f}–{wr['sim_80'][1]:.0f}, and {den.wins:.0f}+ wins in "
+         f"{pct(wr['sim_p_actual'])}. Only {pct(rb['rolling']['share_gap_ge'], 1)} of team-seasons since 2015 beat an "
+         "out-of-sample efficiency forecast by as much."),
+        ("High", f"An {k_os}-{n_os - k_os} one-score record is not a reliable baseline for future seasons.",
+         f"Close-game win % barely repeats (r = {hs['r_os']:.2f}); the {ms['k']} teams most like Denver 2025 won "
+         f"{pct(ms['os_pct_next'])} of close games the next year and {ms['fewer_next']} of {ms['k']} won fewer games; "
+         f"the same coach and QB went {s24.os_record} in close games in 2024."),
+        ("Moderate", "Denver's fourth-quarter success was less repeatable than its overall efficiency.",
+         f"Across teams, 4th-quarter defence repeats at r = {sg.loc['q4_def_epa', 'year_to_year_r']:.2f} and QB late & "
+         f"close at r = {sg.loc['late_close_dropback_epa', 'year_to_year_r']:.2f}, against "
+         f"{sg.loc['net_epa', 'year_to_year_r']:.2f} for efficiency. Adding last season's late-game numbers to a "
+         f"close-game model did not improve its out-of-sample predictions "
+         f"(log loss {cgm['C']['log_loss']:.5f} with them vs {cgm['B']['log_loss']:.5f} without; lower is better)."),
+        ("Moderate", "The underlying quality came mainly from the defence.",
+         f"Defence ranked #{pf_.loc[('Defence', 'success'), 'rank_2025']} in success rate allowed and "
+         f"#{pf_.loc[('Defence', 'red_zone'), 'rank_2025']} in red-zone TD rate allowed; the offence was "
+         f"#{pf_.loc[('Offence', 'epa'), 'rank_2025']} in EPA per play."),
+        ("Still uncertain", "How the roughly 3 extra wins split between chance, coaching, quarterback execution and "
+         "other situational factors.",
+         "Chance plays explain none of them (they went slightly against Denver), but the data can't separate "
+         "repeatable late-game skill from a hot streak in one season; the 2026 start "
+         f"({lv.os_record} in close games) is too short to settle it."),
+    ]
+
+    # ---- Charts
     verdict = (f"A good team that won more close games than it can expect to repeat: about {den.epa_wins:.0f} "
                f"wins of quality, plus about {den.wins - den.epa_wins:.0f} from late-game results that history "
                "says don't carry over.")
     skill = [
         f"Top-{rank_net} efficiency (net EPA per play {den.net_epa:+.3f}): good enough for about "
         f"{den.epa_wins:.0f} wins, and to expect {pct(p_hat)} of close games, not 50%.",
-        f"Elite 4th-quarter defence: {sg.loc['q4_def_epa', 'den_2025']:+.3f} EPA per play allowed, "
-        f"#{sg.loc['q4_def_epa', 'den_rank_2025']} in the NFL.",
+        f"An elite defence: #{pf_.loc[('Defence', 'success'), 'rank_2025']} in success rate allowed, "
+        f"#{pf_.loc[('Defence', 'sack_rate'), 'rank_2025']} in sack rate, "
+        f"#{pf_.loc[('Defence', 'red_zone'), 'rank_2025']} in red-zone TD rate allowed. The offence was mid-pack "
+        f"(#{pf_.loc[('Offence', 'epa'), 'rank_2025']} in EPA per play).",
         f"Not lucky bounces: chance plays cost Denver {abs(luck['den_luck_2025']):.1f} wins over the season "
         f"(#{luck['den_luck_rank_2025']} of 32) and decided {word(luck['n_decided_by_luck']).replace('zero', 'none')} of the {int(win_ids.sum())} close wins.",
         f"Still winning close games in {LIVE}: {lv.os_record} so far, {lv.record} overall (though chance plays helped by "
@@ -1230,6 +1666,9 @@ def main():
         chart_luck(g_luck)
         chart_repeat(sig)
         chart_verdict(verdict, skill, luck_pts)
+        chart_game_log(log)
+        chart_win_range(wr)
+        chart_two_seasons(tg)
     L.update(LAYOUTS["desktop"])
     chart_card(verdict, [
         (record(den.wins, int(den.games)), "2025 regular-season record"),
@@ -1254,6 +1693,12 @@ def main():
     top_luck.drop(columns=["team"]).round(3).to_csv(OUT / "biggest_chance_plays_close_games_2025.csv", index=False)
     g26.to_csv(OUT / f"close_games_{LIVE}.csv", index=False)
     checks.to_csv(OUT / "figure_checks.csv", index=False)
+    log.round(3).to_csv(OUT / "game_log_2025.csv", index=False)
+    prof.round(4).to_csv(OUT / "offence_defence_profile.csv", index=False)
+    near.round(3).to_csv(OUT / "matched_teams.csv", index=False)
+    y2y.to_csv(OUT / "denver_2024_vs_2025.csv", index=False)
+    po_tab.drop(columns=["top_play"]).round(3).to_csv(OUT / "playoffs_2025.csv", index=False)
+    pd.DataFrame(rb["thresholds"]).round(4).to_csv(OUT / "robustness_close_game_definitions.csv", index=False)
 
     F = {
         "cutoff": cutoff, "last_week": last_week, "last_game": f"{last_game:%Y-%m-%d}",
@@ -1267,11 +1712,17 @@ def main():
         "signals": sig.to_dict("records"), "wp_model": wp_stats, "chance_rates": rates,
         "luck": luck, "luck_2026_close_games": luck26, "span_2024_2026": span, "live": live_p,
         "denver_by_season": seasons.to_dict("records"),
+        "win_ranges": {k: v for k, v in wr.items() if k != "game_p"}, "margin_model": mm,
+        "close_game_models": cgm, "matched_teams": ms, "robustness": rb,
+        "scorecard": [{"confidence": a, "finding": b, "evidence": c} for a, b, c in scorecard],
     }
+    R = {"log": log, "prof": prof, "wr": wr, "mm": mm, "cgm": cgm, "near": near, "ms": ms, "rb": rb, "y2y": y2y,
+         "po": po_tab, "po_bk": po_bk, "reg_q4": reg_q4, "scorecard": scorecard}
     (OUT / "findings.json").write_text(json.dumps(F, indent=2, default=float))
 
     S = build_sections(F, den, games_out, sig, seasons, hs, binom, luck, luck26, span, live_p, lv, verdict,
-                       skill, luck_pts, po_games, q4_total, lost_total, big, wp_stats, rates, fourth, bk, top_luck, g26)
+                       skill, luck_pts, po_games, q4_total, lost_total, big, wp_stats, rates, fourth, bk, top_luck, g26,
+                       R)
     method = method_md(wp_stats, pyth_check, float(den.pyth_wins))
     write_readme(S, F, method)
     write_page(S, F, den, binom, method)
@@ -1298,25 +1749,33 @@ def word(n: int) -> str:
 
 
 def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, live_p, lv, verdict,
-                   skill, luck_pts, po_games, q4_total, lost_total, big, wp_stats, rates, fourth, bk, top_luck, g26):
+                   skill, luck_pts, po_games, q4_total, lost_total, big, wp_stats, rates, fourth, bk, top_luck, g26,
+                   R):
     S = []
     mo = F["models"]
     pc = F["pyth_check"]
     n_os, k_os = int(den.os_games), int(den.os_wins)
     wins = games[games.result == "W"]
     sg = sig.set_index("metric")
+    N = {k: i for i, k in enumerate(SECTION_ORDER)}
+    pf_ = R["prof"].set_index(["side", "metric"])
+    wr, ms = R["wr"], R["ms"]
 
     S.append(dict(id="verdict", title="The short answer", paras=[
         f"**{verdict}**",
-        f"Denver were a good team in 2025: {ordinal(F['net_epa_rank'])} of 32 in efficiency. But winning "
-        f"{k_os} of {n_os} close games was well beyond what that efficiency predicts, and history shows "
-        "close-game records don't carry over. The extra wins did not come from lucky bounces like fumbles or "
-        "missed kicks. They came from winning fourth quarters, which also tends not to repeat from one season "
-        "to the next.",
+        f"**Repeatable quality:** an elite defence (#{pf_.loc[('Defence', 'success'), 'rank_2025']} in success rate "
+        f"allowed, #{pf_.loc[('Defence', 'sack_rate'), 'rank_2025']} in sack rate) and a mid-pack offence "
+        f"(#{pf_.loc[('Offence', 'epa'), 'rank_2025']} in EPA per play) made Denver "
+        f"{ordinal(F['net_epa_rank'])} of 32 in efficiency: roughly an {den.epa_wins:.0f}-win team, with a plausible "
+        f"range of {wr['sim_80'][0]:.0f}–{wr['sim_80'][1]:.0f}. "
+        f"**Close-game execution:** {k_os}-{n_os - k_os} in one-score games, {den.os_wins_over_exp:.1f} wins more than a "
+        "team this efficient would expect, earned in fourth quarters rather than through lucky bounces. "
+        f"**Heading into {LIVE}:** the {ms['k']} most similar teams since 2010 averaged {ms['wins17_next']:.1f} wins "
+        f"the following year, and {ms['fewer_next']} of {ms['k']} won fewer games.",
         "**What “luck” means here:** results that don't repeat from one season to the next. It doesn't "
-        "mean the players did nothing right; winning a fourth quarter takes real plays. Section 6 measures the "
-        "narrowest kind of luck, chance plays such as fumble recoveries and missed kicks, and those actually "
-        "went against Denver.",
+        "mean the players did nothing right; winning a fourth quarter takes real plays. Section "
+        f"{N['luck']} measures the narrowest kind of luck, chance plays such as fumble recoveries and missed "
+        "kicks, and those actually went against Denver.",
     ], img=("7_verdict.png", "Verdict panel listing the evidence for skill and for luck")))
 
     chk = pd.DataFrame(F["checks"])
@@ -1403,9 +1862,6 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         "Q4 def EPA": games.q4_def_epa.map(lambda x: f"{x:+.1f}"),
         "Luck (WP pts)": games.chance_play_luck_pts.map(lambda x: f"{x:+d}"),
     })[["Game", "Result", "Low win %", "TO margin", "Q4 off EPA", "Q4 def EPA", "Luck (WP pts)"]]
-    po_txt = "; ".join(f"{r.game}: {r.result} {r.den_pts}-{r.opp_pts}{' (OT)' if r.overtime else ''}, "
-                       f"lowest win chance {pct(r.min_wp)}, turnover margin {r.to_margin:+d}"
-                       for r in po_games.itertuples())
     S.append(dict(id="games", title=f"4. The {len(wins)} close wins, one by one", paras=[
         "Win probability is nflverse's play-by-play estimate of each team's chance of winning, based on the "
         f"score, time left, field position, down and distance. In **{len(below)} of the {len(wins)} close wins** "
@@ -1413,7 +1869,7 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         f"({', '.join(f'{g} at {pct(w)}' for g, w in zip(below10.game, below10.min_wp))}).",
         "*How to read the chart:* the line is Denver's chance of winning from kick-off to the final whistle. "
         "A line that dips far below the gray 50% mark and still finishes at 100% is a comeback.",
-        f"Playoffs (also one-score games, shown separately): {po_txt}.",
+        f"The two playoff games are covered separately in section {SECTION_ORDER.index('playoffs')}.",
     ], img=("2_win_probability_close_wins.png", "Small multiples of Denver's win probability in each close win"),
         table=gt))
 
@@ -1510,11 +1966,10 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         "Net EPA/play (rank)": [f"{v:+.3f} (#{r})" for v, r in zip(seasons.net_epa, seasons.net_epa_rank)],
     })[["Season", "Record", "One-score", "Expected one-score wins", "Net EPA/play (rank)"]]
     s24 = seasons[seasons.season == 2024].iloc[0]
-    S.append(dict(id="live", title=f"8. Denver across seasons, and the {LIVE} live check", paras=[
-        f"The cleanest comparison is Denver against itself. In 2024, the same coach and quarterback went "
-        f"**{s24.os_record}** in one-score games with almost the same efficiency ({s24.net_epa:+.3f} net EPA per play "
-        f"vs {den.net_epa:+.3f} in 2025). The team's quality barely changed, but the close-game record swung from "
-        f"{s24.os_record} to {record(den.os_wins, n_os)}.",
+    S.append(dict(id="live", title=f"What it means for {LIVE}: the live check", paras=[
+        f"If 2025's close-game record were the team's true level, Denver should keep winning most close games in "
+        f"{LIVE}. If it was mostly execution that doesn't carry over, their record should drift back toward what "
+        f"their efficiency predicts. The table tracks Denver season by season; {LIVE} is in progress.",
         f"**{LIVE} so far (through week {F['last_week']}):** {lv.record} overall and **{lv.os_record} in "
         f"one-score games**. Efficiency has dropped to {lv.net_epa:+.3f} (#{lv.net_epa_rank} of 32), so a team like "
         f"this would expect to win about {pct(lv.exp_os_pct)} of close games. Winning all {int(lv.os_games)} has a "
@@ -1533,6 +1988,283 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         "history says to expect close-game records to drift back toward what efficiency predicts. Worth re-running "
         "at the end of the season.",
     ], table=se))
+
+    S += retrospective_sections(F, den, games, bk, sg, hs, binom, R, N, s24, lv)
+    S.sort(key=lambda s: -1 if s["id"] == "verdict" else N[s["id"]])
+    for s in S:   # number the sections in reading order
+        if s["id"] != "verdict":
+            s["title"] = f"{N[s['id']]}. " + re.sub(r"^\d+\. ", "", s["title"])
+    return S
+
+
+SECTION_ORDER = ["checks", "season", "offdef", "expected", "ranges", "binomial", "games", "decided", "closemodels",
+                 "luck", "y2024", "history", "matched", "signals", "playoffs", "live", "robust", "scorecard"]
+
+
+def fmt_profile(metric: str, v: float) -> str:
+    return f"{100 * v:.1f}%" if metric in ("success", "sack_rate", "qb_hit", "explosive", "third", "red_zone") \
+        else f"{v:+.3f}"
+
+
+def retrospective_sections(F, den, games, bk, sg, hs, binom, R, N, s24, lv):
+    S = []
+    log, prof, wr, cgm, near, ms, rb, y2y, po = (R[k] for k in ("log", "prof", "wr", "cgm", "near", "ms", "rb",
+                                                                  "y2y", "po"))
+    n_os, k_os = int(den.os_games), int(den.os_wins)
+    pf_ = prof.set_index(["side", "metric"])
+
+    # --- The season, game by game
+    w = log[log.result == "W"]
+    l_ = log[log.result != "W"]
+    big_w = w[~w.one_score]
+    top = log[log.opp_rank <= 16]
+    out_played = log[log.den_net_epa < 0]
+    lt = log.assign(**{
+        "Game": log.game, "Opp. rank": log.opp_rank.map(lambda r: f"#{r}"),
+        "Result": [f"{r} {int(a)}-{int(b)}" for r, a, b in zip(log.result, log.pf, log.pa)],
+        "One-score": np.where(log.one_score, "yes", ""),
+        "DEN net EPA/play": log.den_net_epa.map(lambda v: f"{v:+.3f}"),
+        "Opp. net EPA/play": log.opp_net_epa.map(lambda v: f"{v:+.3f}"),
+    })[["Game", "Opp. rank", "Result", "One-score", "DEN net EPA/play", "Opp. net EPA/play"]]
+    S.append(dict(id="season", title="The 2025 season, game by game", paras=[
+        f"Denver went {record(len(w), len(log))}. **{int(w.one_score.sum())} of the {len(w)} wins came by "
+        f"{ONE_SCORE} points or fewer**; only {len(big_w)} were by more "
+        f"({', '.join(f'{g} by {int(mg)}' for g, mg in zip(big_w.game, big_w.margin))}). The losses were by "
+        f"{', '.join(str(int(abs(mg))) for mg in l_.margin)} points.",
+        f"Opponent quality is measured by each opponent's 2025 net EPA per play (rank of 32). Against the top half "
+        f"of the league Denver went {record((top.result == 'W').sum(), len(top))}; against the bottom half, "
+        f"{record((log[log.opp_rank > 16].result == 'W').sum(), int((log.opp_rank > 16).sum()))}.",
+        f"Per play, Denver out-played their opponent in {int((log.den_net_epa > 0).sum())} of {len(log)} games. They "
+        f"were out-played in {len(out_played)} and still won {int((out_played.result == 'W').sum())} of those "
+        f"({', '.join(out_played[out_played.result == 'W'].game)}). Those are the wins least likely to repeat.",
+        "*How to read the chart:* each bar is one game's final margin, orange for wins and blue for losses. Bars "
+        "that end inside the shaded band were one-score games.",
+    ], img=("8_game_by_game.png", "Bar chart of Denver's final margin in each 2025 game"), table=lt))
+
+    # --- Offence vs defence
+    pt = prof.assign(**{
+        "Side": prof.side, "Stat": prof.label,
+        "2025 (rank)": [f"{fmt_profile(m, v)} (#{r})" for m, v, r in zip(prof.metric, prof.den_2025, prof.rank_2025)],
+        "2024 (rank)": [f"{fmt_profile(m, v)} (#{r})" for m, v, r in zip(prof.metric, prof.den_2024, prof.rank_2024)],
+        "League avg 2025": [fmt_profile(m, v) for m, v in zip(prof.metric, prof.league_2025)],
+    })[["Side", "Stat", "2025 (rank)", "2024 (rank)", "League avg 2025"]]
+    btot = bk.loc[games[games.result == "W"].game].sum()
+    r_ = lambda side, m: int(pf_.loc[(side, m), "rank_2025"])   # noqa: E731
+    S.append(dict(id="offdef", title="Where the quality came from: defence first", paras=[
+        f"Ranking {ordinal(F['net_epa_rank'])} in net efficiency hides a lopsided team. **The defence was elite:** "
+        f"#{r_('Defence', 'success')} in success rate allowed, #{r_('Defence', 'sack_rate')} in sack rate, "
+        f"#{r_('Defence', 'qb_hit')} in QB-hit rate, #{r_('Defence', 'red_zone')} in red-zone touchdowns allowed and "
+        f"#{r_('Defence', 'explosive')} in explosive plays allowed. **The offence was mid-pack:** "
+        f"#{r_('Offence', 'epa')} in EPA per play, #{r_('Offence', 'pass_epa')} passing and "
+        f"#{r_('Offence', 'rush_epa')} rushing, though it protected the quarterback well "
+        f"(#{r_('Offence', 'sack_rate')} for fewest sacks per dropback).",
+        f"The same split shows up in 2024, when the defence was #{int(pf_.loc[('Defence', 'epa'), 'rank_2024'])} in "
+        f"EPA allowed and the offence #{int(pf_.loc[('Offence', 'epa'), 'rank_2024'])}. So the repeatable core of this "
+        "team is its defence, and defensive efficiency is the kind of quality that tends to carry over.",
+        f"**Which side delivered the close wins?** Across the {len(games[games.result == 'W'])} close wins, "
+        f"fourth-quarter and overtime defence added {btot['Q4/OT defence']:+.1f} EPA and the offence "
+        f"{btot['Q4/OT offence']:+.1f}"
+        + (", so both sides contributed, the defence slightly more." if btot["Q4/OT defence"] >= btot["Q4/OT offence"] > 0
+           else (", so both sides contributed, the offence slightly more." if btot["Q4/OT offence"] > btot["Q4/OT defence"] > 0
+                 else ".")),
+        "Definitions: success rate = share of plays with positive EPA; explosive = passes of 20+ yards or runs "
+        "of 10+; red-zone rate = drives reaching the opponent's 20 that end in a touchdown. Pressure rate isn't "
+        "in nflverse's play-by-play, so QB-hit rate stands in for it.",
+    ], table=pt))
+
+    # --- Win ranges
+    wt = pd.DataFrame([
+        ("From points (Pythagorean)", f"{wr['pyth_mean']:.1f}", f"{wr['pyth_80'][0]:.0f}–{wr['pyth_80'][1]:.0f}",
+         pct(wr["pyth_p_actual"], 1)),
+        ("From efficiency (regression)", f"{wr['epa_mean']:.1f}", f"{wr['epa_80'][0]:.1f}–{wr['epa_80'][1]:.1f}",
+         pct(wr["epa_p_actual"], 1)),
+        ("Game-by-game simulation", f"{wr['sim_mean']:.1f}", f"{wr['sim_80'][0]:.0f}–{wr['sim_80'][1]:.0f}",
+         pct(wr["sim_p_actual"], 1)),
+    ], columns=["Method", "Expected wins", "Middle 80%", f"Chance of {den.wins:.0f}+"])
+    mm = R["mm"]
+    S.append(dict(id="ranges", title=f"How sure is “about {den.epa_wins:.0f} wins”?", paras=[
+        f"{den.epa_wins:.0f} expected wins is a point estimate, not proof that Denver were exactly an "
+        f"{den.epa_wins:.0f}-win team. Three ways to put a range on it:",
+        f"**Points:** even a team that truly wins {pct(den.pyth_pct)} of its games (its Pythagorean rate) finishes "
+        f"anywhere from {wr['pyth_80'][0]:.0f} to {wr['pyth_80'][1]:.0f} wins in 80% of 17-game seasons. "
+        f"**Efficiency:** the regression misses by about {wr['epa_resid_sd']:.1f} wins per team-season, which "
+        f"gives an 80% range of {wr['epa_80'][0]:.1f}–{wr['epa_80'][1]:.1f}. **Game by game:** each of Denver's 17 "
+        f"games is simulated from both teams' season-long efficiency and home field (fitted on {mm['n']:,} games, "
+        f"2010–2024: a 0.1 gap in net EPA per play is worth about {mm['slope'] / 10:.1f} points of margin, home "
+        f"field about {mm['home']:.1f}, and results scatter by about {mm['sd']:.0f} points around that).",
+        f"All three agree: **Denver's underlying level was roughly {wr['sim_80'][0]:.0f} to {wr['sim_80'][1]:.0f} "
+        f"wins**, and {den.wins:.0f} sits at the top end, reached in {pct(wr['sim_p_actual'])} of simulated seasons. "
+        f"The game-by-game simulation is a little higher ({wr['sim_mean']:.1f}) than the other two because it "
+        "accounts for Denver's schedule, which included several weak opponents.",
+        "*How to read the chart:* each bar is the share of simulated seasons ending with that many wins. The "
+        "orange bar is what actually happened.",
+    ], img=("9_win_range.png", "Histogram of simulated win totals"), table=wt))
+
+    # --- Close-game expectations, four ways
+    ct = pd.DataFrame([
+        ("Actual", f"{k_os}", pct(k_os / n_os), "", ""),
+        ("Coin flip", f"{0.5 * n_os:.1f}", "50%", pct(binom["coin"], 1), f"{cgm['coin_log_loss']:.3f}"),
+        ("Season efficiency only", f"{binom['p_hat'] * n_os:.1f}", pct(binom["p_hat"]), pct(binom["expected"], 1), ""),
+        ("A. Full-season efficiency of both teams + home", f"{cgm['A']['den_exp_wins']:.1f}",
+         pct(cgm["A"]["den_rate"]), pct(cgm["A"]["p_at_least_actual"], 1), f"{cgm['A']['log_loss']:.3f}"),
+        ("B. Pregame strength (2024 efficiency) + home", f"{cgm['B']['den_exp_wins']:.1f}",
+         pct(cgm["B"]["den_rate"]), pct(cgm["B"]["p_at_least_actual"], 1), f"{cgm['B']['log_loss']:.3f}"),
+        ("C. B + 2024 late-game QB play and 4th-quarter defence", f"{cgm['C']['den_exp_wins']:.1f}",
+         pct(cgm["C"]["den_rate"]), pct(cgm["C"]["p_at_least_actual"], 1), f"{cgm['C']['log_loss']:.3f}"),
+    ], columns=["Model", f"Expected close wins (of {n_os})", "Win rate", f"Chance of {k_os}+", "Out-of-sample log loss"])
+    S.append(dict(id="closemodels", title="Close-game expectations, four ways", paras=[
+        "The earlier estimate (58%) only used Denver's own efficiency. A sharper version models every one-score "
+        f"game from {PBP_FIRST + 1} to 2024 ({cgm['n_games']:,} games) using **both** teams' strength and home "
+        "field, then applies it to Denver's 13. Model A uses each team's full-season efficiency; model B uses only "
+        "what was known before the season (the previous year's efficiency); model C adds last season's late-game "
+        "quarterback play and fourth-quarter defence, to test whether late-game ability carries over.",
+        f"Every version expects Denver to win **{min(cgm[k]['den_exp_wins'] for k in 'ABC'):.1f}–"
+        f"{max(cgm[k]['den_exp_wins'] for k in 'ABC'):.1f}** of the 13, not 11. Model A is higher than the "
+        "earlier estimate because Denver's close games included several weak opponents.",
+        f"**Does late-game ability repeat?** Model C fits the past no better than model B when tested season by "
+        f"season out of sample (log loss {cgm['C']['log_loss']:.5f} vs {cgm['B']['log_loss']:.5f}; lower is "
+        f"better, a coin flip scores {cgm['coin_log_loss']:.3f}). In other words, a team's late-game numbers one "
+        "year tell you essentially nothing extra about its close games the next. That is the direct test of "
+        "whether some teams have a repeatable close-game edge, and across the league the answer is no.",
+        "Log loss measures how good a model's probabilities are; lower is better. Starting field position and "
+        "in-game quarterback changes aren't in these pregame models.",
+    ], table=ct))
+
+    # --- 2024 vs 2025
+    y = y2y.set_index("Stat")
+    a_, b_ = "2024", str(SEASON)
+    num = lambda row, yr: float(str(y.loc[row, yr]).split()[0].rstrip("%"))   # noqa: E731
+    q24, q25 = (num("Close games: EPA per game, Q4/OT offence + defence", yr) for yr in (a_, b_))
+    t24, t25 = (num("Close games: EPA per game, turnovers + kicks", yr) for yr in (a_, b_))
+    c24, c25 = (num("Close games: chance-play luck per game (WP pts)", yr) for yr in (a_, b_))
+    qb24, qb25 = (num("QB EPA per dropback, late & close", yr) for yr in (a_, b_))
+    go24, go25 = (int(str(y.loc["4th-down tries (converted)", yr]).split()[0]) for yr in (a_, b_))
+    pd24, pd25 = (int(y.loc["Point differential", yr]) for yr in (a_, b_))
+
+    def cmp(x24, x25, tol, better="higher"):
+        if abs(x25 - x24) <= tol:
+            return "about the same"
+        return "better in 2024" if (x24 > x25) == (better == "higher") else "better in 2025"
+
+    process = [
+        f"fourth-quarter/overtime EPA per close game: {q24:+.1f} in 2024, {q25:+.1f} in 2025 ({cmp(q24, q25, 1.0)})",
+        f"quarterback EPA per dropback late in close games: {qb24:+.3f} vs {qb25:+.3f} ({cmp(qb24, qb25, 0.02)})",
+        f"turnovers and kicks per close game: {t24:+.1f} vs {t25:+.1f} ({cmp(t24, t25, 1.0)})",
+        f"chance-play luck per close game: {c24:+.0f} vs {c25:+.0f} win-probability points ({cmp(c24, c25, 5)})",
+        f"point differential: {pd24:+d} vs {pd25:+d} ({cmp(pd24, pd25, 10)})",
+    ]
+    tally = {k: sum(p.endswith(f"({k})") for p in process)
+             for k in ("better in 2024", "about the same", "better in 2025")}
+    S.append(dict(id="y2024", title="Same team, opposite results: 2024 vs 2025", paras=[
+        f"This is the clearest evidence in the whole analysis. In 2024 the same coach and quarterback went "
+        f"**{s24.os_record}** in one-score games; in 2025, **{record(den.os_wins, n_os)}**. Their efficiency barely "
+        f"moved ({s24.net_epa:+.3f} net EPA per play in 2024, {den.net_epa:+.3f} in 2025), and the defence was "
+        "elite both years.",
+        "**What changed in the close games?** Comparing how Denver actually played in them: " + "; ".join(process) + ".",
+        f"Of these {len(process)} measures, {word(tally['better in 2024'])} favoured 2024, "
+        f"{word(tally['about the same'])} {'was' if tally['about the same'] == 1 else 'were'} about the same and "
+        f"{word(tally['better in 2025'])} favoured 2025. "
+        + (f"**How Denver played in close games barely changed, or was better in 2024, yet the results flipped from "
+           f"{s24.os_record} to {record(den.os_wins, n_os)}.** That is what results that don't repeat look like."
+           if tally["better in 2025"] <= 1 else
+           "The swing lines up partly with how Denver played, but much of it is in results rather than "
+           "measurable performance."),
+        f"**Did coaching decisions change?** 4th-down aggressiveness was "
+        f"{'similar' if abs(go24 - go25) <= 3 else 'different'} ({go24} tries in 2024, {go25} in 2025). Late-game "
+        "play-calling can't be measured directly in play-by-play data. One thing did change: 2025 had "
+        f"{y.loc['Games decided by 3 points or fewer', b_].split()[0]} games decided by 3 points or fewer, against "
+        f"{y.loc['Games decided by 3 points or fewer', a_].split()[0]} in 2024.",
+        "*How to read the chart:* each dot is one game's final margin; dots inside the shaded band were one-score "
+        "games. Same band, same team quality, opposite colours.",
+    ], img=("10_2024_vs_2025.png", "Dot plot of game margins in 2024 and 2025"), table=y2y))
+
+    # --- Matched historical comparison
+    nt = near.assign(**{
+        "Team": near.team + " " + near.season.astype(str),
+        "Record (close)": [f"{record(w_, int(g))} ({record(ow, int(og))})"
+                           for w_, g, ow, og in zip(near.wins, near.games, near.os_wins, near.os_games)],
+        "Net EPA/play": near.net_epa.map(lambda v: f"{v:+.3f}"),
+        "Pt diff/game": near.pd_pg.map(lambda v: f"{v:+.1f}"),
+        "Next year (close)": [f"{record(w_, int(g))} ({record(ow, int(og))})" for w_, g, ow, og in
+                              zip(near.wins_next, near.games_next, near.os_wins_next, near.os_games_next)],
+    })[["Team", "Record (close)", "Net EPA/play", "Pt diff/game", "Next year (close)"]]
+    S.append(dict(id="matched", title="Teams that looked like Denver 2025", paras=[
+        f"Picking teams by extreme close-game records shows regression in general. A sharper question is what "
+        f"happened to teams with **Denver's whole profile**. These are the {ms['k']} team-seasons from 2010 to 2024 "
+        "closest to Denver 2025 on net EPA per play, point differential per game, one-score win % and overall win %.",
+        f"They averaged {ms['wins17']:.1f} wins (per 17 games) and won {pct(ms['os_pct'])} of close games. "
+        f"**The next season they averaged {ms['wins17_next']:.1f} wins** (range {ms['next_min']:.0f}–"
+        f"{ms['next_max']:.0f}) and won {pct(ms['os_pct_next'])} of close games; {ms['fewer_next']} of {ms['k']} won "
+        "fewer games. That is the most realistic baseline for a team built like Denver 2025.",
+    ], table=nt))
+
+    # --- Playoffs
+    pt_ = po.assign(**{
+        "Game": po["round"] + " vs " + po.opp + " (#" + po.opp_rank.astype(str) + ")",
+        "Result": [f"{r} {a}-{b}" + (" OT" if o else "") for r, a, b, o in zip(po.result, po.den_pts, po.opp_pts, po.overtime)],
+        "Net EPA/play": po.net_pp.map(lambda v: f"{v:+.3f}"),
+        "TO margin": po.to_margin.map(lambda x: f"{x:+d}" if x else "0"),
+        "Q4/OT EPA": (po.q4_off_epa + po.q4_def_epa).map(lambda v: f"{v:+.1f}"),
+        "Chance-play luck": (100 * po.luck).map(lambda v: f"{v:+.0f}"),
+        "Lowest win %": po.min_wp.map(pct),
+    })[["Game", "Result", "Net EPA/play", "TO margin", "Q4/OT EPA", "Chance-play luck", "Lowest win %"]]
+    paras = [f"The playoffs don't decide whether a {den.wins:.0f}-{den.games - den.wins:.0f} regular season was "
+             "sustainable, but they show how the team looked against playoff-level opponents. Regular-season "
+             f"benchmarks: net EPA per play {den.net_epa:+.3f}; fourth-quarter/overtime EPA in close games "
+             f"{R['reg_q4']:+.1f} per game."]
+    for r in po.itertuples():
+        paras.append(
+            f"**{r.round} vs {r.opp} ({r.result} {r.den_pts}-{r.opp_pts}{', overtime' if r.overtime else ''}).** "
+            f"Net EPA per play {r.net_pp:+.3f}, turnover margin {r.to_margin:+d}, fourth-quarter/overtime EPA "
+            f"{r.q4_off_epa + r.q4_def_epa:+.1f}, chance-play luck {100 * r.luck:+.0f} win-probability points, "
+            f"lowest win chance {pct(r.min_wp)}. Biggest swing in Denver's favour: "
+            f"{re.sub(r'^Q\d: (\([^)]*\) )*', '', r.top_play)[:110].rstrip()}…")
+    follows_to = all((r.to_margin > 0) == (r.result == "W") for r in po.itertuples() if r.to_margin)
+    paras.append(
+        f"Across the two games Denver's net EPA per play averaged {po.net_pp.mean():+.3f}, well below their "
+        f"regular-season {den.net_epa:+.3f}" + (
+            "; in both, the result followed the turnover margin." if follows_to and len(po) > 1 else "."))
+    S.append(dict(id="playoffs", title="The 2025 playoffs", paras=paras + [
+        "Chance-play luck and turnover margin are from Denver's point of view; positive helped Denver."], table=pt_))
+
+    # --- Robustness
+    th = pd.DataFrame(rb["thresholds"])
+    tt = th.assign(**{
+        "Close game = decided by": th.points.map(lambda p: f"{p} points or fewer"),
+        "Denver 2025": th.den_record, "Expected rate": th.exp_pct.map(pct),
+        "Chance of that record or better": th.p_at_least.map(lambda p: pct(p, 1)),
+        "Year-to-year r": th.r.map(lambda v: f"{v:.2f}"),
+    })[["Close game = decided by", "Denver 2025", "Expected rate", "Chance of that record or better", "Year-to-year r"]]
+    wn = rb["windows"]
+    ro = rb["rolling"]
+    S.append(dict(id="robust", title="Do the findings survive different choices?", paras=[
+        "**Different definitions of a close game** (table). With any cut-off from 7 to 10 points, close-game "
+        "records barely repeat and Denver's record stays unusual. With the tightest cut-off, 3 points or fewer, "
+        f"Denver went {th.loc[th.points == 3, 'den_record'].iloc[0]}, which is **not** unusual "
+        f"({pct(th.loc[th.points == 3, 'p_at_least'].iloc[0])} chance). So the over-performance sits in games "
+        "decided by 4–8 points, which in practice means a late score or stop, and the conclusion depends partly "
+        "on where the line is drawn.",
+        f"**Different historical periods** (each season compared with the next). Close-game win % barely repeats "
+        f"for seasons {wn[0]['period']} (r = {wn[0]['r']:.2f}, n = {wn[0]['n_pairs']}) and {wn[1]['period']} "
+        f"(r = {wn[1]['r']:.2f}, n = {wn[1]['n_pairs']}). Teams "
+        f"that won at least 75% of 8+ close games fell from {pct(wn[0]['hot_pct'])} to {pct(wn[0]['hot_pct_next'])} "
+        f"the next year in the first period ({wn[0]['hot_n']} teams) and from {pct(wn[1]['hot_pct'])} to "
+        f"{pct(wn[1]['hot_pct_next'])} in the second ({wn[1]['hot_n']} teams).",
+        f"**Rolling, out-of-sample forecasts.** For every season from 2015 to {SEASON}, the efficiency model was "
+        f"refitted using only earlier seasons and then used to predict that season. It misses by "
+        f"{ro['mae']:.1f} wins on average. Its forecast for Denver 2025 was {ro['den_pred']:.1f}; only "
+        f"{pct(ro['share_gap_ge'], 1)} of {ro['n']} team-seasons from 2015 to 2024 beat their forecast by "
+        f"{ro['den_gap']:.1f} wins or more.",
+        "**Different model specifications.** Expected wins for Denver 2025: " + "; ".join(
+            f"{s['model']} {s['den_exp_wins']:.1f}" for s in rb["specs"]) + f"; best-fitting Pythagorean exponent "
+        f"{F['pyth_check']['den_best']:.1f}. The estimate barely moves.",
+    ], table=tt))
+
+    # --- Scorecard
+    sct = pd.DataFrame(R["scorecard"], columns=["Confidence", "Finding", "Evidence"])
+    S.append(dict(id="scorecard", title="Final verdict: what the evidence establishes", paras=[
+        "Separating what the data shows clearly from what it can't settle:",
+    ], table=sct, scorecard=True))
     return S
 
 
@@ -1638,6 +2370,14 @@ table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:ta
 th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 th{color:var(--muted);font-weight:600;font-size:12.5px}
 td.num,th.num{text-align:right}
+td:first-child,th:first-child{white-space:normal;min-width:10em}
+.score{border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:0 10px 10px 0;padding:12px 14px;margin:12px 0}
+.score.high{border-left-color:var(--navy)}
+.score.still{border-left-color:var(--orange)}
+.score .badge{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+color:var(--muted);margin-bottom:4px}
+.score .finding{font-weight:700;color:var(--navy);margin-bottom:6px}
+.score p{margin:0 0 4px;font-size:15.5px}
 ul{padding-left:20px}
 li{margin-bottom:6px}
 .small{font-size:14.5px;color:var(--muted)}
@@ -1767,9 +2507,14 @@ def write_page(S, F, den, binom, method: str):
         parts += [f"<p>{bold_md_to_html(p)}</p>" for p in s["paras"]]
         if s.get("img"):
             parts.append(chart_html(*s["img"]))
-        if s.get("table") is not None:
+        if s.get("scorecard"):
+            for conf, finding, evidence in s["table"].itertuples(index=False):
+                cls = conf.split()[0].lower()
+                parts.append(f'<div class="score {cls}"><span class="badge">{_h.escape(conf)}</span>'
+                             f'<p class="finding">{_h.escape(finding)}</p><p>{_h.escape(evidence)}</p></div>')
+        elif s.get("table") is not None:
             tbl = html_table(s["table"].astype(str).map(_h.escape))
-            parts.append(tbl if len(s["table"]) <= 8 else f"<details><summary>Show the table</summary>{tbl}</details>")
+            parts.append(tbl if len(s["table"]) <= 18 else f"<details><summary>Show the table</summary>{tbl}</details>")
         parts.append("</section>")
     verdict = S[0]
     title = "Broncos 2025: Luck or Skill?"
@@ -1801,7 +2546,8 @@ def write_page(S, F, den, binom, method: str):
 <p class="kicker">NFL data analysis · Python</p>
 <h1>Broncos 2025: luck or skill?</h1>
 <p class="lede">The 2025 Denver Broncos went {record(den.wins, int(den.games))} and won {k_os} of {n_os} games decided by
-8 points or fewer. Were they really that good in close games, or did those games break their way?</p>
+8 points or fewer. How much of that was repeatable team quality, how much was close-game execution, and what does it
+say about their true level heading into {LIVE}?</p>
 <p class="byline">Data: nflverse · {F['cutoff']} ·
 <a href="{REPO_URL}/tree/main/broncos-luck-or-skill">Code and data on GitHub</a></p>
 <div class="tiles">{''.join(f'<div class="tile"><div class="v">{v}</div><div class="l">{l}</div></div>' for v, l in tiles)}</div>

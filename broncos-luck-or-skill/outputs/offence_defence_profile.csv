@@ -1,0 +1,18 @@
+side,metric,label,den_2024,rank_2024,league_2024,den_2025,rank_2025,league_2025
+Offence,epa,EPA per play,0.0097,16,0.0137,0.0374,13,0.0135
+Offence,success,Success rate,0.4275,18,0.4407,0.4376,18,0.4428
+Offence,pass_epa,Pass EPA per dropback,0.06,17,0.0736,0.1005,11,0.0634
+Offence,rush_epa,Rush EPA per carry,-0.0752,17,-0.0783,-0.0715,18,-0.0626
+Offence,sack_rate,Sack rate (sacks per dropback),0.0372,2,0.0644,0.034,1,0.0651
+Offence,explosive,Explosive play rate,0.0896,15,0.0872,0.0802,20,0.0847
+Offence,third,3rd-down conversion,0.3957,13,0.3979,0.412,11,0.3948
+Offence,red_zone,Red-zone TD rate (drives),0.6207,9,0.5742,0.6207,11,0.5813
+Defence,epa,EPA allowed per play,-0.0982,1,0.0128,-0.06,8,0.0144
+Defence,success,Success rate allowed,0.4042,3,0.4406,0.3769,1,0.4431
+Defence,pass_epa,Pass EPA allowed per dropback,-0.059,1,0.0702,-0.0374,9,0.0632
+Defence,rush_epa,Rush EPA allowed per carry,-0.1753,3,-0.0783,-0.1053,8,-0.0615
+Defence,sack_rate,Sack rate (sacks per dropback),0.0894,1,0.065,0.0978,1,0.0651
+Defence,qb_hit,QB-hit rate (per dropback),0.1901,1,0.1411,0.2144,1,0.1456
+Defence,explosive,Explosive plays allowed,0.07,2,0.087,0.0573,2,0.0846
+Defence,third,3rd-down conversions allowed,0.3729,11,0.3964,0.3376,2,0.3956
+Defence,red_zone,Red-zone TD rate allowed,0.5,4,0.5788,0.4314,1,0.5822
