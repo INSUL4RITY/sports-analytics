@@ -226,20 +226,6 @@ Pythagorean exponent 2.37.
 - Efficiency doesn't capture everything a coach controls (clock management, timeouts, late-game play-calling).
   Those may be real skills the models miss.
 
-### Explaining it in an interview (60 seconds)
-
-1. **Question:** Denver went 14-3 and 11-2 in one-score games. Were they that good, or did close games break their way?
-2. **Expected wins:** points and efficiency both say about 11 wins, so roughly 3 wins came from
-   somewhere else. A team that efficient should win about 58% of close games, not 85%.
-3. **How rare:** 11+ of 13 has a 4.2% chance even at their expected rate. Historically, teams with 9+ close
-   wins drop to about 47% the next year; the correlation year to year is about 0.08.
-4. **Not bounces:** I measured luck on chance plays (fumbles, opponents' kicks, interception-worthy throws, 4th downs) as actual
-   minus expected win probability. Denver were slightly *unlucky* there (-0.7 wins), and no close win depended on it.
-5. **So what was it?** Elite fourth quarters. But late-game performance barely repeats across teams, and the same
-   coach and QB went 1-6 in close games in 2024.
-6. **Verdict:** a good team with an unsustainably good close-game record. The 2026 start (4-0 in close games) is the
-   best counter-evidence, but it is a small sample and chance plays have helped this time. I'd re-check at season's end.
-
 <!-- FINDINGS:END -->
 
 ## Reproduce it
