@@ -227,6 +227,24 @@ def expected_wins(ts: pd.DataFrame, epa: pd.DataFrame):
     return m, cur.sort_values("wins_over_epa", ascending=False), models
 
 
+def pyth_exponent_check(ts: pd.DataFrame, den: pd.Series) -> dict:
+    """Does the standard 2.37 exponent fit recent seasons? Try 1.5-3.5 on the model-fitting seasons."""
+    fit = ts[ts.season.isin(FIT)]
+
+    def rmse_wins(k):  # typical miss, in wins per 17 games
+        p = fit.pf ** k / (fit.pf ** k + fit.pa ** k)
+        return float(np.sqrt(np.mean((p - fit.win_pct) ** 2)) * 17)
+
+    def den_wins(k):
+        return float(den.games * den.pf ** k / (den.pf ** k + den.pa ** k))
+
+    ks = np.round(np.arange(1.5, 3.501, 0.01), 2)
+    errs = [rmse_wins(k) for k in ks]
+    best = float(ks[int(np.argmin(errs))])
+    return {"best": best, "rmse_best": min(errs), "rmse_std": rmse_wins(PYTH_EXP), "n": len(fit),
+            "den_best": den_wins(best), "den_2": den_wins(2.0), "den_3": den_wins(3.0)}
+
+
 # ---------------------------------------------------------------------------
 # 2. History: teams with 9+ one-score wins, and what happened next
 # ---------------------------------------------------------------------------
@@ -1121,6 +1139,7 @@ def main():
     # 1. Expected wins
     m, cur, models = expected_wins(ts, epa)
     den = cur[cur.team == TEAM].iloc[0]
+    pyth_check = pyth_exponent_check(ts, den)
     rank_net = int((cur.net_epa > den.net_epa).sum()) + 1
     rank_over = int((cur.wins_over_epa > den.wins_over_epa).sum()) + 1
     p_hat = float(den.exp_os_pct)
@@ -1242,7 +1261,7 @@ def main():
         "checks": checks.to_dict("records"),
         "denver_2025": {k: (float(v) if isinstance(v, (int, float, np.number)) else v)
                         for k, v in den.items()},
-        "net_epa_rank": rank_net, "wins_over_epa_rank": rank_over, "models": models,
+        "net_epa_rank": rank_net, "wins_over_epa_rank": rank_over, "models": models, "pyth_check": pyth_check,
         "binomial": binom, "history": {k: v for k, v in hs.items()},
         "q4_total_epa_close_wins": q4_total, "to_st_total_epa_close_wins": lost_total,
         "signals": sig.to_dict("records"), "wp_model": wp_stats, "chance_rates": rates,
@@ -1253,7 +1272,7 @@ def main():
 
     S = build_sections(F, den, games_out, sig, seasons, hs, binom, luck, luck26, span, live_p, lv, verdict,
                        skill, luck_pts, po_games, q4_total, lost_total, big, wp_stats, rates, fourth, bk, top_luck, g26)
-    method = method_md(wp_stats)
+    method = method_md(wp_stats, pyth_check, float(den.pyth_wins))
     write_readme(S, F, method)
     write_page(S, F, den, binom, method)
     print(f"Done. Figures in {FIG}, tables in {OUT}, page in {SITE}")
@@ -1282,6 +1301,7 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
                    skill, luck_pts, po_games, q4_total, lost_total, big, wp_stats, rates, fourth, bk, top_luck, g26):
     S = []
     mo = F["models"]
+    pc = F["pyth_check"]
     n_os, k_os = int(den.os_games), int(den.os_wins)
     wins = games[games.result == "W"]
     sg = sig.set_index("metric")
@@ -1318,6 +1338,12 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         f"**{den.wins - den.epa_wins:+.1f}** above the efficiency estimate. That was the "
         f"{'' if F['wins_over_epa_rank'] == 1 else ordinal(F['wins_over_epa_rank']) + '-'}largest gap in the league in 2025. Their efficiency ranked "
         f"{ordinal(F['net_epa_rank'])}, so the team was good; the record just ran ahead of how they played.",
+        f"**Checking the {PYTH_EXP}.** {PYTH_EXP} is the standard NFL exponent (from Daryl Morey's original work), "
+        f"not one fitted here. Testing every exponent from 1.5 to 3.5 on the same {pc['n']} team-seasons, the best "
+        f"fit is **{pc['best']:.2f}** (typical error {pc['rmse_best']:.2f} wins per season, vs {pc['rmse_std']:.2f} "
+        f"for {PYTH_EXP}). With {pc['best']:.2f}, Denver's expected wins rise to {pc['den_best']:.1f}, so they still "
+        f"won about {den.wins - pc['den_best']:.0f} more than their points predicted. Any exponent from 2 to 3 gives "
+        f"{pc['den_2']:.1f}–{pc['den_3']:.1f} expected wins, so the finding doesn't depend on this choice.",
         f"**Close games.** Fitting one-score win % on net EPA per play (same team-seasons, "
         f"{mo['epa_os_model']['games']:,} one-score games, weighted by games played) shows that a team as "
         f"efficient as Denver typically wins **{pct(binom['p_hat'])}** of close games. That is better than 50%, "
@@ -1510,7 +1536,7 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
     return S
 
 
-def method_md(wp_stats: dict) -> str:
+def method_md(wp_stats: dict, pc: dict, pyth_wins: float) -> str:
     return f"""### Method, assumptions and limits
 
 **Data.** nflverse schedules ({HIST_FIRST}–{LIVE}), play-by-play ({PBP_FIRST}–{LIVE}) and FTN charting
@@ -1520,7 +1546,10 @@ so Denver 2025 is never used to fit the model that judges it.
 
 **Definitions.** One-score game: final margin of 8 points or fewer. EPA per play: passes and runs only
 (the standard nflverse filter). Net EPA per play = offence EPA/play − defence EPA/play allowed.
-Pythagorean exponent 2.37.
+Pythagorean exponent {PYTH_EXP}: the standard NFL value from Daryl Morey's original work, not fitted here. Checked
+against {FIT.start}–{FIT.stop - 1} ({pc['n']} team-seasons, exponents 1.5–3.5): the best fit is {pc['best']:.2f}
+(typical error {pc['rmse_best']:.2f} wins per season vs {pc['rmse_std']:.2f} for {PYTH_EXP}), which moves Denver's
+expected wins by {pc['den_best'] - pyth_wins:+.1f}.
 
 **High-leverage luck — assumptions.**
 - nflverse publishes win probability (WP) only for what actually happened. For the outcome that didn't happen

@@ -58,6 +58,8 @@ There are two standard ways to estimate how many games a team should have won. *
 
 Denver won 14, which is **+3.0** above the points estimate and **+3.0** above the efficiency estimate. That was the largest gap in the league in 2025. Their efficiency ranked 6th, so the team was good; the record just ran ahead of how they played.
 
+**Checking the 2.37.** 2.37 is the standard NFL exponent (from Daryl Morey's original work), not one fitted here. Testing every exponent from 1.5 to 3.5 on the same 480 team-seasons, the best fit is **2.78** (typical error 1.37 wins per season, vs 1.42 for 2.37). With 2.78, Denver's expected wins rise to 11.4, so they still won about 3 more than their points predicted. Any exponent from 2 to 3 gives 10.6–11.6 expected wins, so the finding doesn't depend on this choice.
+
 **Close games.** Fitting one-score win % on net EPA per play (same team-seasons, 4,060 one-score games, weighted by games played) shows that a team as efficient as Denver typically wins **58%** of close games. That is better than 50%, but efficiency explains only a small part of close results (R² = 0.19). That means 7.5 expected close wins out of 13. Denver won 11: **+3.5 above expectation**.
 
 *How to read the chart:* each row is one estimate. The gray dot is what was expected, the orange dot is what happened, and the gap between them is what efficiency can't explain.
@@ -196,7 +198,10 @@ so Denver 2025 is never used to fit the model that judges it.
 
 **Definitions.** One-score game: final margin of 8 points or fewer. EPA per play: passes and runs only
 (the standard nflverse filter). Net EPA per play = offence EPA/play − defence EPA/play allowed.
-Pythagorean exponent 2.37.
+Pythagorean exponent 2.37: the standard NFL value from Daryl Morey's original work, not fitted here. Checked
+against 2010–2024 (480 team-seasons, exponents 1.5–3.5): the best fit is 2.78
+(typical error 1.37 wins per season vs 1.42 for 2.37), which moves Denver's
+expected wins by +0.4.
 
 **High-leverage luck — assumptions.**
 - nflverse publishes win probability (WP) only for what actually happened. For the outcome that didn't happen
