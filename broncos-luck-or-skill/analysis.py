@@ -891,8 +891,8 @@ def chart_history(pairs: pd.DataFrame, big: pd.DataFrame, hs: dict, den_now: pd.
     x, y = 100 * den_now.os_win_pct, 100 * live.os_win_pct
     ax.scatter(x, y, s=130, color=ORANGE, edgecolor=SURFACE, linewidth=2, zorder=4,
                label=f"Denver 2025 → {LIVE} so far")
-    ax.annotate(f"DEN 2025 → {LIVE}: {int(live.os_wins)}-{int(live.os_games - live.os_wins)}\n"
-                f"so far (only {int(live.os_games)} games)", (x, y), xytext=(-12, -2),
+    ax.annotate(f"DEN 2025 → {LIVE}: {int(live.os_wins)}-{int(live.os_games - live.os_wins)} in\n"
+                f"close games ({record(live.wins, int(live.games))} overall)", (x, y), xytext=(-12, -2),
                 textcoords="offset points", ha="right", va="top", fontsize=fs(10), fontweight="bold")
     ax.axhline(50, color=MUTED, lw=1)
     ax.plot([70, 101], [nxt] * 2, color=BLUE, lw=2, label=f"9+ teams, next year: {nxt:.0f}%" if L["phone"] else None)
@@ -1204,7 +1204,7 @@ def main():
         f"#{sg.loc['q4_def_epa', 'den_rank_2025']} in the NFL.",
         f"Not lucky bounces: chance plays cost Denver {abs(luck['den_luck_2025']):.1f} wins over the season "
         f"(#{luck['den_luck_rank_2025']} of 32) and decided {word(luck['n_decided_by_luck']).replace('zero', 'none')} of the {int(win_ids.sum())} close wins.",
-        f"Still winning close games in {LIVE}: {lv.os_record} so far (though chance plays helped by "
+        f"Still winning close games in {LIVE}: {lv.os_record} so far, {lv.record} overall (though chance plays helped by "
         f"{luck26['den_luck_close_games']:+.1f} wins this time).",
     ]
     luck_pts = [
