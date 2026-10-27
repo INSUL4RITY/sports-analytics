@@ -1,8 +1,8 @@
 {
-  "cutoff": "2026 season through week 6 (last game 19 Oct 2026); data pulled 21 Oct 2026",
-  "last_week": 6,
-  "last_game": "2026-10-19",
-  "data_pulled": "2026-10-21",
+  "cutoff": "2026 season through week 7 (last game 26 Oct 2026); data pulled 27 Oct 2026",
+  "last_week": 7,
+  "last_game": "2026-10-26",
+  "data_pulled": "2026-10-27",
   "verdict": "A good team that won more close games than it can expect to repeat: about 11 wins of quality, plus about 3 from late-game results that history says don't carry over.",
   "checks": [
     {
@@ -36,13 +36,13 @@
       "Match": "yes"
     },
     {
-      "Figure": "2026 record so far",
+      "Figure": "2026 record through week 6",
       "Stated": "4-2",
       "From the data": "4-2",
       "Match": "yes"
     },
     {
-      "Figure": "2026 one-score record so far",
+      "Figure": "2026 one-score record through week 6",
       "Stated": "4-0",
       "From the data": "4-0",
       "Match": "yes"
@@ -295,34 +295,34 @@
       "Interception luck": -0.12336837439826952,
       "Opponent kick": -0.3638372501845102
     },
-    "den_luck_close_games": 0.9094842399026123,
+    "den_luck_close_games": 0.8872256322831444,
     "n_decided_by_luck": 0,
     "luck_year_to_year_r": 0.005305253370391745,
     "luck_pairs": 96,
     "n_chance_plays_den_2025": 1309,
     "simulation": {
-      "expected_wins": 3.00395,
+      "expected_wins": 3.0221,
       "n_games": 4,
       "p10": 2.0,
       "p90": 4.0,
       "p_11_or_more": 0.0,
       "dist": {
-        "0": 0.00345,
-        "1": 0.0406,
-        "2": 0.2116,
-        "3": 0.43725,
-        "4": 0.3071
+        "0": 0.003,
+        "1": 0.0389,
+        "2": 0.2058,
+        "3": 0.4376,
+        "4": 0.3147
       }
     }
   },
   "span_2024_2026": {
     "os_wins": 16.0,
     "os_games": 24,
-    "exp": 13.564096840221834,
-    "p_at_least": 0.2134036499542936
+    "exp": 13.675019619330723,
+    "p_at_least": 0.22729483763989583
   },
   "live": {
-    "p_all_close_wins": 0.05663109898327044
+    "p_all_close_wins": 0.07064821543666829
   },
   "denver_by_season": [
     {
@@ -375,19 +375,19 @@
     },
     {
       "season": 2026,
-      "games": 6,
-      "record": "4-2",
-      "pf": 114.0,
-      "pa": 125.0,
-      "pyth_wins": 2.6738245981834243,
-      "epa_wins": 2.8394768869825864,
-      "net_epa": -0.017951053100831636,
-      "net_epa_rank": 19,
+      "games": 7,
+      "record": "5-2",
+      "pf": 144.0,
+      "pa": 141.0,
+      "pyth_wins": 3.587300902872599,
+      "epa_wins": 3.691894268492999,
+      "net_epa": 0.017602309265056244,
+      "net_epa_rank": 14,
       "os_games": 4,
       "os_wins": 4.0,
       "os_record": "4-0",
-      "exp_os_pct": 0.4878246564907155,
-      "exp_os_wins": 1.951298625962862
+      "exp_os_pct": 0.5155553512679376,
+      "exp_os_wins": 2.0622214050717504
     }
   ],
   "win_ranges": {

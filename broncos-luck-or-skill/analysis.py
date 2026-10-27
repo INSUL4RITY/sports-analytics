@@ -40,6 +40,7 @@ SITE = ROOT.parent / "docs" / "broncos-luck-or-skill"
 TEAM = "DEN"
 SEASON = 2025                    # the season under the microscope
 LIVE = 2026                      # the follow-up season (in progress)
+ASKED_WEEK = 6                   # the original question's 2026 figures were "so far" as of this week
 ONE_SCORE = 8                    # a one-score game is decided by 8 points or fewer
 PYTH_EXP = 2.37                  # standard NFL Pythagorean exponent
 HIST_FIRST = 2002                # first season of the 32-team era
@@ -1502,6 +1503,7 @@ def main():
     reg = den_all[(den_all.season == SEASON) & (den_all.game_type == "REG")]
     post = den_all[(den_all.season == SEASON) & (den_all.game_type != "REG")]
     live = den_all[(den_all.season == LIVE) & (den_all.game_type == "REG")]
+    asked = live[live.week <= ASKED_WEEK]   # the 2026 figures in the original question were as of this week
 
     def playoff(opp):
         r = post[post.opp == opp].iloc[0]
@@ -1513,8 +1515,9 @@ def main():
         ("2025 point differential", "+90", f"{int(reg.margin.sum()):+d}"),
         ("Divisional round vs Buffalo", "W 33-30", playoff("BUF")),
         ("AFC Championship vs New England", "L 10-7", playoff("NE")),
-        (f"{LIVE} record so far", "4-2", record(live.win.sum(), len(live))),
-        (f"{LIVE} one-score record so far", "4-0", record(live[live.one_score].win.sum(), int(live.one_score.sum()))),
+        (f"{LIVE} record through week {ASKED_WEEK}", "4-2", record(asked.win.sum(), len(asked))),
+        (f"{LIVE} one-score record through week {ASKED_WEEK}", "4-0",
+         record(asked[asked.one_score].win.sum(), int(asked.one_score.sum()))),
     ], columns=["Figure", "Stated", "From the data"])
     checks["Match"] = np.where(checks.Stated == checks["From the data"], "yes", "NO")
     print(checks.to_string(index=False))
