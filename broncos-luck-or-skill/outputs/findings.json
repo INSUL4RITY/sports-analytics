@@ -1,8 +1,8 @@
 {
-  "cutoff": "2026 season through week 7 (last game 26 Oct 2026); data pulled 27 Oct 2026",
-  "last_week": 7,
-  "last_game": "2026-10-26",
-  "data_pulled": "2026-10-27",
+  "cutoff": "2026 games played up to 01 Nov 2026 (Denver through week 8, league through week 7); data pulled 02 Nov 2026",
+  "last_week": 8,
+  "last_game": "2026-11-01",
+  "data_pulled": "2026-11-02",
   "verdict": "A good team that won more close games than it can expect to repeat: about 11 wins of quality, plus about 3 from late-game results that history says don't carry over.",
   "checks": [
     {
@@ -295,39 +295,41 @@
       "Interception luck": -0.12336837439826952,
       "Opponent kick": -0.3638372501845102
     },
-    "den_luck_close_games": 0.8872256322831444,
-    "n_decided_by_luck": 0,
+    "den_luck_close_games": 1.4096812126627556,
+    "n_decided_by_luck": 1,
     "luck_year_to_year_r": 0.005305253370391745,
     "luck_pairs": 96,
     "n_chance_plays_den_2025": 1309,
     "simulation": {
-      "expected_wins": 3.0221,
-      "n_games": 4,
+      "expected_wins": 3.52505,
+      "n_games": 5,
       "p10": 2.0,
-      "p90": 4.0,
+      "p90": 5.0,
       "p_11_or_more": 0.0,
       "dist": {
-        "0": 0.003,
-        "1": 0.0389,
-        "2": 0.2058,
-        "3": 0.4376,
-        "4": 0.3147
+        "0": 0.0017,
+        "1": 0.0227,
+        "2": 0.11845,
+        "3": 0.32125,
+        "4": 0.3778,
+        "5": 0.1581
       }
     }
   },
   "span_2024_2026": {
-    "os_wins": 16.0,
-    "os_games": 24,
-    "exp": 13.675019619330723,
-    "p_at_least": 0.22729483763989583
+    "os_wins": 17.0,
+    "os_games": 25,
+    "exp": 14.17934419302647,
+    "p_at_least": 0.1744912122476073
   },
   "live": {
-    "p_all_close_wins": 0.07064821543666829
+    "p_all_close_wins": 0.03563651469753406
   },
   "denver_by_season": [
     {
       "season": 2023,
       "games": 17,
+      "wins": 8.0,
       "record": "8-9",
       "pf": 357.0,
       "pa": 413.0,
@@ -344,6 +346,7 @@
     {
       "season": 2024,
       "games": 17,
+      "wins": 10.0,
       "record": "10-7",
       "pf": 425.0,
       "pa": 311.0,
@@ -360,6 +363,7 @@
     {
       "season": 2025,
       "games": 17,
+      "wins": 14.0,
       "record": "14-3",
       "pf": 401.0,
       "pa": 311.0,
@@ -375,19 +379,20 @@
     },
     {
       "season": 2026,
-      "games": 7,
-      "record": "5-2",
-      "pf": 144.0,
-      "pa": 141.0,
-      "pyth_wins": 3.587300902872599,
-      "epa_wins": 3.691894268492999,
-      "net_epa": 0.017602309265056244,
+      "games": 8,
+      "wins": 6.0,
+      "record": "6-2",
+      "pf": 172.0,
+      "pa": 165.0,
+      "pyth_wins": 4.196783289338853,
+      "epa_wins": 4.184207793361471,
+      "net_epa": 0.01472252635386295,
       "net_epa_rank": 14,
-      "os_games": 4,
-      "os_wins": 4.0,
-      "os_record": "4-0",
-      "exp_os_pct": 0.5155553512679376,
-      "exp_os_wins": 2.0622214050717504
+      "os_games": 5,
+      "os_wins": 5.0,
+      "os_record": "5-0",
+      "exp_os_pct": 0.5133091957534993,
+      "exp_os_wins": 2.5665459787674965
     }
   ],
   "win_ranges": {
@@ -405,27 +410,26 @@
     ],
     "epa_resid_sd": 1.5302956910732137,
     "epa_p_actual": 0.05343685074398419,
-    "sim_mean": 11.6449,
+    "sim_mean": 11.63255,
     "sim_80": [
       9.0,
       14.0
     ],
     "sim_p_actual": 0.1455,
     "sim_dist": {
-      "4": 5e-05,
-      "5": 0.00015,
-      "6": 0.00185,
-      "7": 0.0081,
-      "8": 0.0276,
-      "9": 0.07635,
-      "10": 0.13865,
-      "11": 0.20485,
-      "12": 0.22405,
-      "13": 0.17285,
-      "14": 0.09905,
-      "15": 0.038,
-      "16": 0.00765,
-      "17": 0.0008
+      "5": 0.00035,
+      "6": 0.0018,
+      "7": 0.0083,
+      "8": 0.0298,
+      "9": 0.0745,
+      "10": 0.1421,
+      "11": 0.20525,
+      "12": 0.21995,
+      "13": 0.17245,
+      "14": 0.09965,
+      "15": 0.0367,
+      "16": 0.00815,
+      "17": 0.001
     }
   },
   "margin_model": {
@@ -584,7 +588,22 @@
     {
       "confidence": "Still uncertain",
       "finding": "How the roughly 3 extra wins split between chance, coaching, quarterback execution and other situational factors.",
-      "evidence": "Chance plays explain none of them (they went slightly against Denver), but the data can't separate repeatable late-game skill from a hot streak in one season; the 2026 start (4-0 in close games) is too short to settle it."
+      "evidence": "Chance plays explain none of them (they went slightly against Denver), but the data can't separate repeatable late-game skill from a hot streak in one season; the 2026 start (5-0 in close games) is too short to settle it."
     }
-  ]
+  ],
+  "live_detail": {
+    "games": 8,
+    "week": 8,
+    "off_rank": 20,
+    "def_rank": 11,
+    "luck": 1.2000364102741516,
+    "luck_rank": 1,
+    "luck_teams": 32,
+    "close_by_type": {
+      "4th-down outcomes": 0.5577962497649496,
+      "interception-worthy throws": 0.5304227584554284,
+      "fumble recoveries": 0.2179913379080816,
+      "opponents' kicks": 0.10347086653429616
+    }
+  }
 }

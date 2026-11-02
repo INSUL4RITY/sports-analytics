@@ -50,7 +50,7 @@ FTN_FIRST = 2022                 # FTN charting (interception-worthy throws) sta
 WP_TRAIN = range(2016, 2025)     # seasons used to train the win-probability stand-in model
 FRANCHISE = {"OAK": "LV", "SD": "LAC", "STL": "LA"}   # relocated teams keep one code
 N_SIMS = 20_000
-RNG = np.random.default_rng(2025)
+SEED = 2025                      # every simulation uses its own generator from this seed
 
 PBP_COLS = [
     "game_id", "play_id", "season", "season_type", "week", "home_team", "away_team",
@@ -676,12 +676,13 @@ def luck_tables(c: pd.DataFrame, games: pd.DataFrame, tg: pd.DataFrame):
     # Simulation: re-draw every chance play in the close games at its normal rate
     plays = den[den.game_id.isin(games.game_id)]
     sims = np.zeros((N_SIMS, len(g)))
+    rng = np.random.default_rng(SEED)   # own generator, so one season's results never depend on another's
     for j, gid in enumerate(g.index):
         pl = plays[plays.game_id == gid]
-        draws = RNG.random((N_SIMS, len(pl))) < pl.q.values
+        draws = rng.random((N_SIMS, len(pl))) < pl.q.values
         shift = ((draws.astype(float) - pl.good.values.astype(float)) * pl.swing.values).sum(axis=1)
         chance = np.clip(result.iloc[j] + shift, 0, 1)
-        sims[:, j] = RNG.random(N_SIMS) < chance
+        sims[:, j] = rng.random(N_SIMS) < chance
     wins = sims.sum(axis=1)
     sim = {"expected_wins": float(wins.mean()), "n_games": len(g),
            "p10": float(np.percentile(wins, 10)), "p90": float(np.percentile(wins, 90)),
@@ -722,7 +723,7 @@ def denver_seasons(m: pd.DataFrame) -> pd.DataFrame:
     d["exp_os_wins"] = d.exp_os_pct * d.os_games
     d["record"] = [record(w, g) for w, g in zip(d.wins, d.games)]
     d["os_record"] = [record(w, g) for w, g in zip(d.os_wins, d.os_games)]
-    return d[["season", "games", "record", "pf", "pa", "pyth_wins", "epa_wins", "net_epa",
+    return d[["season", "games", "wins", "record", "pf", "pa", "pyth_wins", "epa_wins", "net_epa",
               "net_epa_rank", "os_games", "os_wins", "os_record", "exp_os_pct", "exp_os_wins"]]
 
 
@@ -821,7 +822,7 @@ def win_ranges(den: pd.Series, log: pd.DataFrame, mm: dict, models: dict, m: pd.
     # 3) Game-by-game: Denver's and each opponent's season efficiency, home field and normal game-to-game noise
     site = np.where(log.home == 1, 1.0, -1.0)
     mu = mm["home"] * site + mm["slope"] * (den.net_epa - log.opp_net_epa.values)
-    margins = RNG.normal(mu, mm["sd"], (N_SIMS, len(mu)))
+    margins = np.random.default_rng(SEED).normal(mu, mm["sd"], (N_SIMS, len(mu)))
     sim = (margins > 0).sum(axis=1)
     q = lambda x: (float(np.percentile(x, 10)), float(np.percentile(x, 90)))   # noqa: E731
     return {
@@ -1572,11 +1573,25 @@ def main():
     # Data cut-off: the last league week with every game played (not Denver's last game date)
     wk = sched[(sched.season == LIVE) & (sched.game_type == "REG")].groupby("week")
     done = wk.home_score.apply(lambda s: s.notna().all())
-    last_week = int(done[done].index.max())
-    last_game = pd.Timestamp(wk.gameday.max()[last_week])
+    league_week = int(done[done].index.max())
+    last_week = int(live.week.max())   # Denver's latest game (a league week can still be in progress)
+    played = sched[(sched.season == LIVE) & sched.home_score.notna()]
+    last_game = pd.Timestamp(played.gameday.max())
     pulled = pd.Timestamp((RAW / "schedules.parquet").stat().st_mtime, unit="s")
-    cutoff = (f"{LIVE} season through week {last_week} (last game {last_game:%d %b %Y}); "
-              f"data pulled {pulled:%d %b %Y}")
+    cutoff = (f"{LIVE} games played up to {last_game:%d %b %Y} (Denver through week {last_week}"
+              + (f", league through week {league_week}" if league_week < last_week else "")
+              + f"); data pulled {pulled:%d %b %Y}")
+    e26 = epa[epa.season == LIVE].set_index("team")
+    lb26 = luck_by_season[luck_by_season.season == LIVE].sort_values("luck", ascending=False).reset_index(drop=True)
+    luck_types = {"4th-down conversion": "4th-down outcomes", "Interception luck": "interception-worthy throws",
+                  "Fumble recovery": "fumble recoveries", "Opponent kick": "opponents' kicks"}
+    live_x = {
+        "games": len(live), "week": last_week,
+        "off_rank": int(e26.off_epa.rank(ascending=False)[TEAM]), "def_rank": int(e26.def_epa.rank()[TEAM]),
+        "luck": float(lb26.loc[lb26.team == TEAM, "luck"].iloc[0]),
+        "luck_rank": int(lb26.index[lb26.team == TEAM][0]) + 1, "luck_teams": len(lb26),
+        "close_by_type": {luck_types[t]: float(g26[t].sum()) for t in luck_types if t in g26},
+    }
 
     # 7. Season retrospective
     print("Retrospective: game log, offence/defence, win ranges, close-game models ...")
@@ -1719,7 +1734,8 @@ def main():
         "close_game_models": cgm, "matched_teams": ms, "robustness": rb,
         "scorecard": [{"confidence": a, "finding": b, "evidence": c} for a, b, c in scorecard],
     }
-    R = {"log": log, "prof": prof, "wr": wr, "mm": mm, "cgm": cgm, "near": near, "ms": ms, "rb": rb, "y2y": y2y,
+    F["live_detail"] = live_x
+    R = {"live": live_x, "log": log, "prof": prof, "wr": wr, "mm": mm, "cgm": cgm, "near": near, "ms": ms, "rb": rb, "y2y": y2y,
          "po": po_tab, "po_bk": po_bk, "reg_q4": reg_q4, "scorecard": scorecard}
     (OUT / "findings.json").write_text(json.dumps(F, indent=2, default=float))
 
@@ -1969,27 +1985,46 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         "Net EPA/play (rank)": [f"{v:+.3f} (#{r})" for v, r in zip(seasons.net_epa, seasons.net_epa_rank)],
     })[["Season", "Record", "One-score", "Expected one-score wins", "Net EPA/play (rank)"]]
     s24 = seasons[seasons.season == 2024].iloc[0]
+    lx = R["live"]
+    pf25 = R["prof"].set_index(["side", "metric"])
+    off25, def25 = int(pf25.loc[("Offence", "epa"), "rank_2025"]), int(pf25.loc[("Defence", "epa"), "rank_2025"])
     S.append(dict(id="live", title=f"What it means for {LIVE}: the live check", paras=[
         f"If 2025's close-game record were the team's true level, Denver should keep winning most close games in "
         f"{LIVE}. If it was mostly execution that doesn't carry over, their record should drift back toward what "
         f"their efficiency predicts. The table tracks Denver season by season; {LIVE} is in progress.",
-        f"**{LIVE} so far (through week {F['last_week']}):** {lv.record} overall and **{lv.os_record} in "
-        f"one-score games**. Efficiency has dropped to {lv.net_epa:+.3f} (#{lv.net_epa_rank} of 32), so a team like "
-        f"this would expect to win about {pct(lv.exp_os_pct)} of close games. Winning all {int(lv.os_games)} has a "
-        f"{pct(live_p['p_all_close_wins'], 1)} chance. And unlike 2025, the chance plays in those games went "
-        f"Denver's way: **{100 * luck26['den_luck_close_games']:+.0f} points of win probability** in total "
-        f"(about {abs(luck26['den_luck_close_games']):.1f} wins), positive in "
-        f"{int((g26.luck_total > 0).sum())} of {len(g26)} games, though no single game passed the ±50 line "
-        f"({word(luck26['n_decided_by_luck']).replace('zero', 'none')} decided by luck). Replaying them with chance "
-        f"plays at normal rates gives about {luck26['simulation']['expected_wins']:.1f} wins out of {len(g26)}.",
+        f"**{LIVE} so far ({lx['games']} games, through week {lx['week']}):** {lv.record} overall and "
+        f"**{lv.os_record} in one-score games**. But the team underneath has changed. Net efficiency "
+        f"{'has dropped to' if lv.net_epa < den.net_epa else 'is'} {lv.net_epa:+.3f} (#{lv.net_epa_rank} of 32, against "
+        f"#{F['net_epa_rank']} in 2025), with the offence #{lx['off_rank']} in EPA per play (#{off25} in 2025) and the "
+        f"defence #{lx['def_rank']} (#{def25} in 2025). Their record is {lv.wins - lv.pyth_wins:+.1f} wins ahead of "
+        f"their points scored and allowed. A team this efficient would expect to win about {pct(lv.exp_os_pct)} of "
+        f"close games, so " + (f"winning all {int(lv.os_games)}" if lv.os_wins == lv.os_games else
+                               f"winning {int(lv.os_wins)} or more of {int(lv.os_games)}")
+        + f" has a {pct(live_p['p_all_close_wins'], 1)} chance.",
+        f"**And this time the bounces are going {'Denver' + chr(39) + 's way' if luck26['den_luck_close_games'] > 0 else 'against Denver'}.** "
+        f"Chance plays in the close games added **{100 * luck26['den_luck_close_games']:+.0f} points of win "
+        f"probability** (about {abs(luck26['den_luck_close_games']):.1f} wins), positive in "
+        f"{int((g26.luck_total > 0).sum())} of {len(g26)} games: "
+        + ", ".join(f"{k} {v:+.2f} wins" for k, v in sorted(lx["close_by_type"].items(), key=lambda kv: -kv[1]))
+        + f". Over the whole season Denver's chance-play luck is {lx['luck']:+.2f} wins, #{lx['luck_rank']} of "
+        f"{lx['luck_teams']}; in 2025 it was {luck['den_luck_2025']:+.2f} (#{luck['den_luck_rank_2025']}). Replaying "
+        f"the close games with chance plays at normal rates gives about "
+        f"{luck26['simulation']['expected_wins']:.1f} wins out of {len(g26)}.",
         f"Across 2024–{LIVE} (same coach and QB), Denver are {record(span['os_wins'], span['os_games'])} in one-score "
         f"games against {span['exp']:.1f} expected. The chance of {span['os_wins']:.0f} or more at their expected "
         f"rates is {pct(span['p_at_least'], 1)}.",
-        "**What the live check means:** the 2026 start is the best evidence on the skill side. Some real, "
-        "repeatable late-game edge that efficiency stats miss can't be ruled out. But it is only "
-        f"{int(lv.os_games)} games, chance plays have helped this time, the 2024 record points the other way, and "
-        "history says to expect close-game records to drift back toward what efficiency predicts. Worth re-running "
-        "at the end of the season.",
+        ((f"**What the live check means:** the winning has continued, but the profile behind it hasn't. In 2025 "
+          f"Denver were a top-{F['net_epa_rank']} team whose bounces went against them; in {LIVE} they are a "
+          f"#{lv.net_epa_rank} team whose bounces rank #{lx['luck_rank']} in the league. That is the pattern the "
+          "model expects to fade: the close wins now lean on chance plays rather than on underlying quality. The "
+          "regression warning still stands; it just hasn't shown up in the results yet. A real late-game edge can't "
+          f"be ruled out, but {int(lv.os_games)} close games is a small sample, so this is worth re-running at the "
+          "end of the season.")
+         if lx["luck_rank"] <= 5 and lv.net_epa_rank > F["net_epa_rank"] and luck["den_luck_2025"] < 0 else
+         ("**What the live check means:** the 2026 start is the best evidence on the skill side. Some real, "
+          "repeatable late-game edge that efficiency stats miss can't be ruled out. But it is only "
+          f"{int(lv.os_games)} games, the 2024 record points the other way, and history says to expect close-game "
+          "records to drift back toward what efficiency predicts. Worth re-running at the end of the season.")),
     ], table=se))
 
     S += retrospective_sections(F, den, games, bk, sg, hs, binom, R, N, s24, lv)
