@@ -1,8 +1,9 @@
 {
-  "cutoff": "2026 games played up to 01 Nov 2026 (Denver through week 8, league through week 7); data pulled 02 Nov 2026",
+  "cutoff": "2026 games played up to 05 Nov 2026 (Denver through week 8); data pulled 08 Nov 2026",
+  "updated": "updated 8 Nov 2026 (Denver through week 8)",
   "last_week": 8,
-  "last_game": "2026-11-01",
-  "data_pulled": "2026-11-02",
+  "last_game": "2026-11-05",
+  "data_pulled": "2026-11-08",
   "verdict": "A good team that won more close games than it can expect to repeat: about 11 wins of quality, plus about 3 from late-game results that history says don't carry over.",
   "checks": [
     {
@@ -295,24 +296,24 @@
       "Interception luck": -0.12336837439826952,
       "Opponent kick": -0.3638372501845102
     },
-    "den_luck_close_games": 1.4096812126627556,
-    "n_decided_by_luck": 1,
+    "den_luck_close_games": 1.3942740871829655,
+    "n_decided_by_luck": 0,
     "luck_year_to_year_r": 0.005305253370391745,
     "luck_pairs": 96,
     "n_chance_plays_den_2025": 1309,
     "simulation": {
-      "expected_wins": 3.52505,
+      "expected_wins": 3.5248,
       "n_games": 5,
       "p10": 2.0,
       "p90": 5.0,
       "p_11_or_more": 0.0,
       "dist": {
         "0": 0.0017,
-        "1": 0.0227,
-        "2": 0.11845,
-        "3": 0.32125,
-        "4": 0.3778,
-        "5": 0.1581
+        "1": 0.02315,
+        "2": 0.1229,
+        "3": 0.31665,
+        "4": 0.3721,
+        "5": 0.1635
       }
     }
   },
@@ -594,16 +595,16 @@
   "live_detail": {
     "games": 8,
     "week": 8,
-    "off_rank": 20,
+    "off_rank": 19,
     "def_rank": 11,
-    "luck": 1.2000364102741516,
+    "luck": 1.183542591741874,
     "luck_rank": 1,
     "luck_teams": 32,
     "close_by_type": {
       "4th-down outcomes": 0.5577962497649496,
-      "interception-worthy throws": 0.5304227584554284,
+      "interception-worthy throws": 0.5131882727695916,
       "fumble recoveries": 0.2179913379080816,
-      "opponents' kicks": 0.10347086653429616
+      "opponents' kicks": 0.10529822674034259
     }
   }
 }
