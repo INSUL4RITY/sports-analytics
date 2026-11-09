@@ -1,9 +1,9 @@
 {
-  "cutoff": "2026 games played up to 05 Nov 2026 (Denver through week 8); data pulled 08 Nov 2026",
-  "updated": "updated 8 Nov 2026 (Denver through week 8)",
-  "last_week": 8,
-  "last_game": "2026-11-05",
-  "data_pulled": "2026-11-08",
+  "cutoff": "2026 games played up to 08 Nov 2026 (Denver through week 9, league through week 8); data pulled 09 Nov 2026",
+  "updated": "updated 9 Nov 2026 (Denver through week 9)",
+  "last_week": 9,
+  "last_game": "2026-11-08",
+  "data_pulled": "2026-11-09",
   "verdict": "A good team that won more close games than it can expect to repeat: about 11 wins of quality, plus about 3 from late-game results that history says don't carry over.",
   "checks": [
     {
@@ -296,35 +296,36 @@
       "Interception luck": -0.12336837439826952,
       "Opponent kick": -0.3638372501845102
     },
-    "den_luck_close_games": 1.3942740871829655,
+    "den_luck_close_games": 1.5309531471976396,
     "n_decided_by_luck": 0,
     "luck_year_to_year_r": 0.005305253370391745,
     "luck_pairs": 96,
     "n_chance_plays_den_2025": 1309,
     "simulation": {
-      "expected_wins": 3.5248,
-      "n_games": 5,
-      "p10": 2.0,
-      "p90": 5.0,
+      "expected_wins": 4.35885,
+      "n_games": 6,
+      "p10": 3.0,
+      "p90": 6.0,
       "p_11_or_more": 0.0,
       "dist": {
-        "0": 0.0017,
-        "1": 0.02315,
-        "2": 0.1229,
-        "3": 0.31665,
-        "4": 0.3721,
-        "5": 0.1635
+        "0": 5e-05,
+        "1": 0.00575,
+        "2": 0.0392,
+        "3": 0.1548,
+        "4": 0.3259,
+        "5": 0.3391,
+        "6": 0.1352
       }
     }
   },
   "span_2024_2026": {
-    "os_wins": 17.0,
-    "os_games": 25,
-    "exp": 14.17934419302647,
-    "p_at_least": 0.1744912122476073
+    "os_wins": 18.0,
+    "os_games": 26,
+    "exp": 14.726411895141203,
+    "p_at_least": 0.1352872510823228
   },
   "live": {
-    "p_all_close_wins": 0.03563651469753406
+    "p_all_close_wins": 0.019529038370233107
   },
   "denver_by_season": [
     {
@@ -380,20 +381,20 @@
     },
     {
       "season": 2026,
-      "games": 8,
-      "wins": 6.0,
-      "record": "6-2",
-      "pf": 172.0,
-      "pa": 165.0,
-      "pyth_wins": 4.196783289338853,
-      "epa_wins": 4.184207793361471,
-      "net_epa": 0.01472252635386295,
-      "net_epa_rank": 14,
-      "os_games": 5,
-      "os_wins": 5.0,
-      "os_record": "5-0",
-      "exp_os_pct": 0.5133091957534993,
-      "exp_os_wins": 2.5665459787674965
+      "games": 9,
+      "wins": 7.0,
+      "record": "7-2",
+      "pf": 198.0,
+      "pa": 186.0,
+      "pyth_wins": 4.832781166784913,
+      "epa_wins": 4.80614624345421,
+      "net_epa": 0.021936123772621295,
+      "net_epa_rank": 15,
+      "os_games": 6,
+      "os_wins": 6.0,
+      "os_record": "6-0",
+      "exp_os_pct": 0.5189356134803716,
+      "exp_os_wins": 3.1136136808822297
     }
   ],
   "win_ranges": {
@@ -589,22 +590,22 @@
     {
       "confidence": "Still uncertain",
       "finding": "How the roughly 3 extra wins split between chance, coaching, quarterback execution and other situational factors.",
-      "evidence": "Chance plays explain none of them (they went slightly against Denver), but the data can't separate repeatable late-game skill from a hot streak in one season; the 2026 start (5-0 in close games) is too short to settle it."
+      "evidence": "Chance plays explain none of them (they went slightly against Denver), but the data can't separate repeatable late-game skill from a hot streak in one season; the 2026 start (6-0 in close games) is too short to settle it."
     }
   ],
   "live_detail": {
-    "games": 8,
-    "week": 8,
-    "off_rank": 19,
-    "def_rank": 11,
-    "luck": 1.183542591741874,
+    "games": 9,
+    "week": 9,
+    "off_rank": 15,
+    "def_rank": 13,
+    "luck": 1.3220054412320195,
     "luck_rank": 1,
     "luck_teams": 32,
     "close_by_type": {
-      "4th-down outcomes": 0.5577962497649496,
+      "4th-down outcomes": 0.4833806120186798,
       "interception-worthy throws": 0.5131882727695916,
-      "fumble recoveries": 0.2179913379080816,
-      "opponents' kicks": 0.10529822674034259
+      "fumble recoveries": 0.34664659295689704,
+      "opponents' kicks": 0.18773766945247133
     }
   }
 }
