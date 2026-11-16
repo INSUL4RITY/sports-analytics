@@ -41,6 +41,16 @@ TEAM = "DEN"
 SEASON = 2025                    # the season under the microscope
 LIVE = 2026                      # the follow-up season (in progress)
 ASKED_WEEK = 6                   # the original question's 2026 figures were "so far" as of this week
+# Pre-registered 2026 test, written on 16 Nov 2026 (Denver's bye week), before any game it judges was played.
+# These values are frozen: changing them after the games would defeat the point of writing them down first.
+PREREG = {
+    "written": "16 Nov 2026",
+    "from_week": 11,      # only one-score games from week 11 on count; weeks 1-9 were already known
+    "p": 0.52,            # yardstick: Denver's expected close-game win rate from 2026 efficiency after week 9 (51.9%)
+    "alpha": 0.10,        # "unusual" = a record a 52% team would reach less than 10% of the time
+    "luck_max": 0.5,      # ...and chance plays explain less than half a win of it
+    "min_games": 4,       # fewer close games than this is too few to judge
+}
 ONE_SCORE = 8                    # a one-score game is decided by 8 points or fewer
 PYTH_EXP = 2.37                  # standard NFL Pythagorean exponent
 HIST_FIRST = 2002                # first season of the 32-team era
@@ -971,6 +981,27 @@ def robustness(tg: pd.DataFrame, ts: pd.DataFrame, epa: pd.DataFrame, den: pd.Se
     return out
 
 
+def playoff_qb_notes(sched: pd.DataFrame, po: pd.DataFrame, refresh: bool) -> dict:
+    """For playoff games Denver's usual starter missed: who started instead, and the injury report's reason."""
+    den = sched[(sched.season == SEASON) & ((sched.home_team == TEAM) | (sched.away_team == TEAM))]
+    qb = pd.Series(np.where(den.home_team == TEAM, den.home_qb_name, den.away_qb_name), index=den.game_id)
+    usual = qb[den.set_index("game_id").game_type == "REG"].mode().iloc[0]
+    inj = cached(f"injuries_{SEASON}", lambda: nfl.load_injuries(SEASON).to_pandas()[
+        ["game_type", "week", "team", "full_name", "report_status", "report_primary_injury"]], refresh)
+    notes = {}
+    for r in po.itertuples():
+        starter = qb.get(r.game_id)
+        if starter and starter != usual:
+            rep = inj[(inj.team == TEAM) & (inj.week == r.week) & (inj.full_name == usual)]
+            why = ""
+            if len(rep) and pd.notna(rep.report_status.iloc[0]):
+                hurt = str(rep.report_primary_injury.iloc[0]).lower() if pd.notna(rep.report_primary_injury.iloc[0]) else ""
+                why = (f" {usual} was listed as {str(rep.report_status.iloc[0]).lower()} on the injury report"
+                       + (f" ({hurt})" if hurt else "") + ".")
+            notes[r.game_id] = f"{starter} started at quarterback in place of {usual}.{why}"
+    return notes
+
+
 def compare_seasons(tg, pbp, sm, luck_by_season, close, close_luck, years=(2024, 2025)) -> pd.DataFrame:
     """Denver season vs season: overall quality, late-game play, and what decided the close games."""
     rows = {}
@@ -1563,6 +1594,21 @@ def main():
     live_ts = ts[(ts.team == TEAM) & (ts.season == LIVE)].iloc[0]
     games26, tl26, bk26, _ = close_games(tg, pbp, LIVE)
     g26, _, luck26, _, _ = luck_tables(chance, games26, tg)
+    # The pre-registered test: only games from PREREG["from_week"] on, judged against the frozen yardstick
+    pr = PREREG
+    tw = g26[g26.week >= pr["from_week"]]
+    left = int(((sched.season == LIVE) & (sched.game_type == "REG") & sched.home_score.isna()
+                & ((sched.home_team == TEAM) | (sched.away_team == TEAM))).sum())
+    n_t, k_t = len(tw), int((tw.result == "W").sum())
+    p_t = binom_tail(k_t, n_t, pr["p"]) if n_t else None
+    luck_t = float(tw.luck_total.sum()) if n_t else 0.0
+    status = ("pending" if n_t < pr["min_games"] else
+              "against" if p_t < pr["alpha"] and luck_t < pr["luck_max"] else
+              "unusual_luck" if p_t < pr["alpha"] else "consistent")
+    thresholds = {n: next((k for k in range(n + 1) if binom_tail(k, n, pr["p"]) < pr["alpha"]), None)
+                  for n in range(pr["min_games"], 9)}
+    prereg = {**pr, "n": n_t, "wins": k_t, "p_tail": p_t, "luck": luck_t, "status": status,
+              "games_left": left, "known_close": int((g26.week < pr["from_week"]).sum()), "thresholds": thresholds}
     s3 = seasons[seasons.season >= 2024]
     ps = np.concatenate([[p] * int(n) for p, n in zip(s3.exp_os_pct, s3.os_games)])
     span = {"os_wins": float(s3.os_wins.sum()), "os_games": int(s3.os_games.sum()),
@@ -1736,8 +1782,10 @@ def main():
         "scorecard": [{"confidence": a, "finding": b, "evidence": c} for a, b, c in scorecard],
     }
     F["live_detail"] = live_x
+    F["prereg"] = prereg
     R = {"live": live_x, "log": log, "prof": prof, "wr": wr, "mm": mm, "cgm": cgm, "near": near, "ms": ms, "rb": rb, "y2y": y2y,
-         "po": po_tab, "po_bk": po_bk, "reg_q4": reg_q4, "scorecard": scorecard}
+         "po": po_tab, "po_bk": po_bk, "reg_q4": reg_q4, "scorecard": scorecard, "prereg": prereg,
+         "po_qb": playoff_qb_notes(sched, po_tab, args.refresh)}
     (OUT / "findings.json").write_text(json.dumps(F, indent=2, default=float))
 
     S = build_sections(F, den, games_out, sig, seasons, hs, binom, luck, luck26, span, live_p, lv, verdict,
@@ -1804,6 +1852,12 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         "A one-score game is one decided by 8 points or fewer (regular season; playoffs reported separately; "
         "a tie would count as half a win)."
         + (" All figures match." if (chk.Match == "yes").all() else " **Some figures differ: the data's values are used.**"),
+        f"**About the playoffs:** including them, Denver were "
+        f"{record(k_os + (po_games.result == 'W').sum(), n_os + len(po_games))} in one-score games "
+        f"({'; '.join(f'{r.result} {r.den_pts}-{r.opp_pts} vs {r.opp}' for r in po_games.itertuples())}). The "
+        f"headline stays {k_os}-{n_os - k_os} because every historical comparison here uses regular-season "
+        f"records, so the definition has to match. Both playoff games, including the loss, are covered in section "
+        f"{N['playoffs']}.",
     ], table=chk))
 
     S.append(dict(id="expected", title=f"1. Denver won about {den.wins - den.epa_wins:.0f} more games than expected", paras=[
@@ -1989,10 +2043,15 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
     lx = R["live"]
     pf25 = R["prof"].set_index(["side", "metric"])
     off25, def25 = int(pf25.loc[("Offence", "epa"), "rank_2025"]), int(pf25.loc[("Defence", "epa"), "rank_2025"])
-    S.append(dict(id="live", title=f"What it means for {LIVE}: the live check", paras=[
-        f"If 2025's close-game record were the team's true level, Denver should keep winning most close games in "
-        f"{LIVE}. If it was mostly execution that doesn't carry over, their record should drift back toward what "
-        f"their efficiency predicts. The table tracks Denver season by season; {LIVE} is in progress.",
+    S.append(dict(id="live", title=f"{LIVE} check: testing the finding on new data", paras=[
+        f"Everything else on this page is about {SEASON} and stays as it was written. This section tests the main finding "
+        f"(close-game records don't carry over) on {LIVE}, a season the analysis had never seen. If {SEASON}'s "
+        f"close-game record were the team's true level, Denver should keep winning most close games. If it was "
+        "mostly results that don't repeat, their record should drift back toward what their efficiency predicts.",
+        f"**In plain terms:** the {R['ms']['k']} teams most like Denver {SEASON} won {pct(R['ms']['os_pct_next'])} of "
+        "their close games the following year, roughly a coin flip. That is an average across teams, not a promise "
+        "for any one of them, and half a season is a small sample: a handful of close games can go one way by "
+        "chance far more often than it feels like they should.",
         f"**{LIVE} so far ({lx['games']} games, through week {lx['week']}):** {lv.record} overall and "
         f"**{lv.os_record} in one-score games**. But the team underneath has changed. Net efficiency "
         f"{'has dropped to' if lv.net_epa < den.net_epa else 'is'} {lv.net_epa:+.3f} (#{lv.net_epa_rank} of 32, against "
@@ -2026,6 +2085,7 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
           "repeatable late-game edge that efficiency stats miss can't be ruled out. But it is only "
           f"{int(lv.os_games)} games, the 2024 record points the other way, and history says to expect close-game "
           "records to drift back toward what efficiency predicts. Worth re-running at the end of the season.")),
+        *prereg_paras(R["prereg"]),
     ], table=se))
 
     S += retrospective_sections(F, den, games, bk, sg, hs, binom, R, N, s24, lv)
@@ -2034,6 +2094,40 @@ def build_sections(F, den, games, sig, seasons, hs, binom, luck, luck26, span, l
         if s["id"] != "verdict":
             s["title"] = f"{N[s['id']]}. " + re.sub(r"^\d+\. ", "", s["title"])
     return S
+
+
+def prereg_paras(t: dict) -> list[str]:
+    """The test written down in advance, and where it stands now."""
+    th = t["thresholds"]
+    perfect = [f"{k}-0" for n, k in th.items() if k == n]
+    partial = [f"{k} of {n}" for n, k in th.items() if k is not None and k < n]
+    examples = (f"going {', '.join(perfect[:-1])} or {perfect[-1]}" if len(perfect) > 1 else
+                f"going {perfect[0]}" if perfect else "") + (f", or winning at least {' or '.join(partial)}" if partial else "")
+    test = (f"**The test, written down on {t['written']}, before any of the games it judges.** Only one-score games "
+            f"from week {t['from_week']} onward count: the first {t['known_close']} close games of {LIVE} were already "
+            f"known when the test was set, so they can't be used to judge it. The yardstick is {pct(t['p'])} per close "
+            f"game, Denver's own expected rate from their {LIVE} efficiency at that point. **By the end of the regular "
+            f"season, the finding counts as wrong for Denver if both of these are true:** (1) their close-game record "
+            f"from week {t['from_week']} is one a {pct(t['p'])} team would reach less than {pct(t['alpha'])} of the time "
+            f"(that means {examples}); and (2) chance plays explain less than "
+            f"{'half a win' if t['luck_max'] == 0.5 else str(t['luck_max']) + ' wins'} of it. If their record is in the normal range, the finding stands. With fewer "
+            f"than {t['min_games']} close games in that stretch, there is too little to judge either way.")
+    rec = record(t["wins"], t["n"])
+    s, since = t["status"], f"{rec} in close games since week {t['from_week']}"
+    if s == "pending":
+        status = (f"no close games in the test window yet ({t['games_left']} regular-season games left)."
+                  if t["n"] == 0 else f"{since}: too few to judge yet ({t['games_left']} regular-season games left).")
+    elif s == "consistent":
+        status = (f"{since}, which a {pct(t['p'])} team would reach {pct(t['p_tail'])} of the time. That is within "
+                  "the normal range, so the finding stands.")
+    elif s == "against":
+        status = (f"{since}, which a {pct(t['p'])} team would reach only {pct(t['p_tail'], 1)} of the time, with "
+                  f"chance plays explaining {t['luck']:+.1f} wins. **By the test set in advance, this counts against "
+                  "the finding.**")
+    else:
+        status = (f"{since} is unusual ({pct(t['p_tail'], 1)} at {pct(t['p'])}), but chance plays explain "
+                  f"{t['luck']:+.1f} wins of it, so by the test set in advance it doesn't count against the finding.")
+    return [test, f"**Where the test stands now:** {status}"]
 
 
 SECTION_ORDER = ["checks", "season", "offdef", "expected", "ranges", "binomial", "games", "decided", "closemodels",
@@ -2257,7 +2351,9 @@ def retrospective_sections(F, den, games, bk, sg, hs, binom, R, N, s24, lv):
             f"Net EPA per play {r.net_pp:+.3f}, turnover margin {r.to_margin:+d}, fourth-quarter/overtime EPA "
             f"{r.q4_off_epa + r.q4_def_epa:+.1f}, chance-play luck {100 * r.luck:+.0f} win-probability points, "
             f"lowest win chance {pct(r.min_wp)}. Biggest swing in Denver's favour: "
-            f"{re.sub(r'^Q\d: (\([^)]*\) )*', '', r.top_play)[:110].rstrip()}…")
+            f"{re.sub(r'^Q\d: (\([^)]*\) )*', '', r.top_play)[:110].rstrip()}…"
+            + (f" **Context:** {R['po_qb'][r.game_id]} The game still counts in every total here: dropping a "
+               "result after the fact because of an injury would be cherry-picking." if r.game_id in R["po_qb"] else ""))
     follows_to = all((r.to_margin > 0) == (r.result == "W") for r in po.itertuples() if r.to_margin)
     paras.append(
         f"Across the two games Denver's net EPA per play averaged {po.net_pp.mean():+.3f}, well below their "
@@ -2493,7 +2589,8 @@ def live_callout(F: dict) -> str:
     if lx["luck_rank"] <= 5:
         bits.append(f"their chance-play luck ranks #{lx['luck_rank']} of {lx['luck_teams']}")
     return (f"**{LIVE} so far:** {lv['record']} overall and {lv['os_record']} in close games"
-            + (", but " + " and ".join(bits) + "." if bits else "."))
+            + (", but " + " and ".join(bits) + "." if bits else ".")
+            + f" A test of the finding for the rest of the season was written down on {F['prereg']['written']}.")
 
 
 def chart_html(name: str, alt: str, lazy: bool = True) -> str:
