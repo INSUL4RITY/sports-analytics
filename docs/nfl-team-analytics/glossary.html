@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metric glossary</title>
+<meta name="description" content="Definitions of the metrics shared by the Insularity NFL team analytics page and the Insularity NFL Forecast.">
+<style>
+:root { --page: #0b0f17; --surface: #141a25; --surface-2: #1b2230; --ink: #e8ecf3; --ink-2: #aab3c3; --muted: #8a94a6; --rule: #283142; --accent: #79aefc; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+h1 { font-size: 1.9rem; margin: 0 0 6px; }
+h2 { font-size: 1.15rem; margin: 28px 0 8px; border-top: 1px solid var(--rule); padding-top: 18px; }
+p { max-width: 78ch; color: var(--ink-2); }
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+dl { margin: 0; display: grid; gap: 8px; }
+dl div { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; }
+dt { font-weight: 700; }
+dt small { color: var(--muted); font-weight: 600; margin-left: 6px; }
+dd { margin: 4px 0 0; color: var(--ink-2); }
+</style></head><body><main class="wrap">
+<p><a href="./">Team analytics</a> · <a href="https://insul4rity.github.io/nfl-forecast/">Insularity NFL Forecast</a></p>
+<h1>Metric glossary</h1>
+<p>One name, one definition: each entry says which variant a number is (raw, opponent-adjusted, weighted and shrunk) and which plays it counts.
+The same label on the two sites can show different numbers when the variants differ; this page says how. For analysis and education only.</p>
+<h2 id="epa">EPA (expected points added)</h2><dl><div><dt>Team analytics and Forecast <small>all</small></dt><dd>Change in nflfastR&#x27;s expected points from before to after a snap, from down, distance, field position and time. 2026 play-by-play is kept on the original nflfastR EP valuation on both sites (nflverse re-published it on a revised scale on 17 Nov 2026; plays already archived keep their original values, later plays are converted with one frozen per-play-type line).</dd></div></dl>
+<h2 id="dropback">Dropback</h2><dl><div><dt>Team analytics</dt><dd>A scrimmage play with nflfastR&#x27;s pass flag: pass attempts, sacks and scrambles. Plays without EPA or a down, kneel-downs and spikes are left out.</dd></div><div><dt>Forecast</dt><dd>nflfastR qb_dropback = 1 (includes sacks and scrambles), spikes left out. Nearly the same plays; counts can differ by a few per team.</dd></div></dl>
+<h2 id="epa-per-dropback">EPA per dropback</h2><dl><div><dt>Team analytics <small>raw</small></dt><dd>Mean EPA over the team&#x27;s (or allowed by the defence&#x27;s) 2026 dropbacks. Labelled (raw).</dd></div><div><dt>Team analytics <small>opponent-adjusted</small></dt><dd>League mean plus the team&#x27;s effect from one least-squares fit on 2026 dropbacks: EPA = intercept + home + offence + defence, team effects summing to zero, no shrinkage, no earlier seasons. Labelled (opp.-adj.).</dd></div><div><dt>Team analytics <small>quarterback, opponent-adjusted</small></dt><dd>A passer&#x27;s raw EPA per dropback minus the average dropback-defence effect of the defences he faced.</dd></div><div><dt>Team analytics <small>expected in a matchup</small></dt><dd>League mean plus each unit&#x27;s opponent-adjusted effect, each first shrunk towards zero by how little data supports it (empirical Bayes) and scaled by the 2021-25 calibration for that week. Labelled (opp.-adjusted, shrunk).</dd></div><div><dt>Forecast <small>weighted and shrunk</small></dt><dd>&quot;Team efficiency entering the game&quot; on a forecast game page: as-of values at the forecast cutoff, exponentially weighted towards recent games, prior-season games down-weighted, shrunk towards league average. Expected to differ from both analytics variants.</dd></div></dl>
+<h2 id="success-rate">Success rate</h2><dl><div><dt>Team analytics <small>raw / opponent-adjusted</small></dt><dd>Share of plays with EPA above zero; the adjusted version uses the same least-squares fit as EPA.</dd></div></dl>
+<h2 id="overall-rating">Overall rating</h2><dl><div><dt>Team analytics <small>points per game</small></dt><dd>(adjusted offensive EPA per play - league mean) x plays per game + (league mean - adjusted defensive EPA per play) x plays per game + the kept share of special-teams EPA per game. 2026 plays only, no prior, no shrinkage of the team effects.</dd></div><div><dt>Team analytics <small>with 2025 prior</small></dt><dd>The same, with each unit&#x27;s 2026 value shrunk towards a prior from its 2025 value (year-to-year slope fitted on 2021-25).</dd></div><div><dt>Forecast <small>Team ratings</small></dt><dd>Opponent-adjusted efficiency in EPA per play, net = offence + defence, re-fitted using only games completed before each moment, leaning on last season early in the year (down-weighted) and shrunk towards league average.</dd></div></dl>
+<h2 id="luck">Luck</h2><dl><div><dt>Team analytics <small>Luck index (points and EPA)</small></dt><dd>Mean of (wins - Pythagorean expected wins from points) and (wins - EPA-expected wins). +0.75 or more = potentially overperforming, -0.75 or less = potentially underperforming.</dd></div><div><dt>Forecast <small>Luck</small></dt><dd>Wins minus expected wins from net EPA per play in each game (a logistic fitted on earlier seasons). +1 or more / -1 or less get a label. Because the analytics index also averages in the points-based gap, the two can differ by a win or more.</dd></div></dl>
+<h2 id="hit-or-sack-rate-and-pressure-rate">Hit-or-sack rate and pressure rate</h2><dl><div><dt>Team analytics <small>hit-or-sack rate</small></dt><dd>Share of dropbacks with a quarterback hit or a sack in the play-by-play (a proxy: free play-by-play has no pressure flag).</dd></div><div><dt>Team analytics <small>pressure rate</small></dt><dd>Pro Football Reference pressures (hurries, hits, sacks) per dropback, from game totals.</dd></div></dl>
+<h2 id="reliability">Reliability (High / Medium / Low)</h2><dl><div><dt>Team analytics</dt><dd>How much of a figure is likely to last at its sample size, from the fitted shrinkage weight: High 50%+ kept, Medium 20-50%, Low under 20%.</dd></div></dl>
+</main></body></html>
